@@ -1,0 +1,41 @@
+<div class="app-layout">
+    @if (isSidebarOpen) {
+    <div class="sidebar-overlay" (click)="closeSidebar()"></div>
+    }
+
+    <aside class="sidebar" [class.sidebar-open]="isSidebarOpen">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class='bx bx-rocket logo-icon'></i>
+                <span class="logo-text">CareerOS</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a routerLink="/internal/marketplace" routerLinkActive="active-tab" class="nav-item"
+                (click)="closeSidebar()">
+                <i class='bx bx-grid-alt'></i> Marketplace
+            </a>
+            <a routerLink="/internal/ai-interview" routerLinkActive="active-tab" class="nav-item"
+                (click)="closeSidebar()">
+                <i class='bx bx-book-open'></i> AI Interview Hub
+            </a>
+            <a routerLink="/internal/job-matching" routerLinkActive="active-tab" class="nav-item"
+                (click)="closeSidebar()">
+                <i class='bx bx-brain'></i> Job Matching
+            </a>
+            <a routerLink="/internal/profile" routerLinkActive="active-tab" class="nav-item" (click)="closeSidebar()">
+                <i class='bx bx-user'></i> Profile
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <button (click)="signOut()" class="nav-item logout-btn">
+                <i class='bx bx-log-out'></i> Logout
+            </button>
+        </div>
+    </aside>
+    <div class="main-content">
+        <router-outlet></router-outlet>
+    </div>
+</div>

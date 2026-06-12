@@ -1,0 +1,365 @@
+<div class="main-content">
+  <!-- Topbar -->
+  <header class="topbar flex-between">
+    <div class="topbar-left">
+      <button class="icon-btn burger-btn" (click)="internal.toggleSidebar()">
+        <i class='bx bx-menu'></i>
+      </button>
+      <div class="search-bar">
+        <i class='bx bx-search'></i>
+        <input type="text" placeholder="Search Events or Jobs" (input)="onSearch($event)" />
+        <i class='bx bx-sparkles right-icon'></i>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn"><i class='bx bx-bell'></i></button>
+      <button class="icon-btn"><i class='bx bx-cog'></i></button>
+      <div class="user-avatar">
+        <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="User Avatar" />
+      </div>
+    </div>
+  </header>
+
+  <div class="home-grid">
+    <!-- Feed Section -->
+    <div class="feed-section">
+
+      <!-- Post Input Card -->
+      <div class="card post-input-card">
+        <div class="input-row">
+          <div class="avatar-small">
+            <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="User Avatar"
+              class="avatar-small-img" />
+          </div>
+          <input type="text" placeholder="Share a career update or ask AI for help..." class="post-input"
+            (click)="openModal('normal')" readonly />
+        </div>
+        <div class="post-actions">
+          <button (click)="openModal('event')"><i class='bx bx-calendar-event text-red'></i> Event</button>
+          <button (click)="openModal('recruitment')"><i class='bx bx-check-square text-gray'></i> Recruitment</button>
+        </div>
+      </div>
+
+      @for (item of feedItems; track $index) {
+      @if (item.type === 'job') {
+      <!-- Job Card -->
+      <div class="card job-card highlight-border">
+        <div class="job-header flex-between">
+          <div class="company-info">
+            <div class="company-logo bg-dark text-white flex-center">{{item.companyLogo}}</div>
+            <div>
+              <h4>{{item.company}}</h4>
+              <p class="meta">Posted {{item.postedTime}} • Recruitment</p>
+            </div>
+          </div>
+          @if (item.urgent) {
+          <span class="badge-urgent">URGENT HIRING</span>
+          }
+        </div>
+
+        <p class="job-desc">
+          We are looking for a <strong>{{item.title}}</strong>. {{item.desc}}
+        </p>
+
+        @if (item.mediaUrl) {
+        <div class="post-image-container">
+          <img [src]="item.mediaUrl" alt="Job Image" class="post-image" />
+        </div>
+        }
+
+        <div class="tags">
+          @for (tag of item.tags; track $index) {
+          <span class="tag">{{tag}}</span>
+          }
+        </div>
+
+        <div class="job-footer flex-between">
+          <div class="compensation">
+            <span class="label">Compensation</span>
+            <span class="value">{{item.compensation}}</span>
+          </div>
+          <a [href]="item.url" target="_blank" class="btn-black" style="text-decoration: none;">Apply Now</a>
+        </div>
+      </div>
+      }
+
+      @if (item.type === 'post') {
+      <!-- Social Post Card -->
+      <div class="card post-card">
+        <div class="post-header flex-between">
+          <div class="user-info">
+            <div class="avatar-small">
+              <img
+                [src]="item.user === 'Alex Rivers' ? (googleAvatarUrl || 'https://ui-avatars.com/api/?name=Alex+Rivers') : ('https://ui-avatars.com/api/?name=' + item.user)"
+                alt="User Avatar" class="avatar-small-img" />
+            </div>
+            <div>
+              <h4>{{item.user}}</h4>
+              <p class="meta">{{item.userRole}}</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="post-text">
+          {{item.text}}
+        </p>
+
+        @if (item.mediaUrl) {
+        <div class="post-image-container">
+          <img [src]="item.mediaUrl" alt="Post Image" class="post-image" />
+        </div>
+        } @else if (item.hasChart) {
+        <div class="post-image-placeholder bg-dark">
+          <!-- Fake image representation -->
+          <div class="fake-dashboard"></div>
+        </div>
+        }
+
+        <div class="post-stats flex-between">
+          <div class="likes-comments">
+            <span><i class='bx bx-like'></i> {{item.likes}}</span>
+            <span><i class='bx bx-message-rounded'></i> {{item.comments}}</span>
+          </div>
+          <i class='bx bx-bookmark bookmark-icon'></i>
+        </div>
+      </div>
+      }
+
+      @if (item.type === 'event') {
+      <!-- Event Card -->
+      <div class="card event-card">
+        <div class="event-card-header flex-between">
+          <div class="organizer-info">
+            <div class="avatar-small">
+              <img [src]="'https://ui-avatars.com/api/?name=' + item.user" alt="Organizer Avatar"
+                class="avatar-small-img" />
+            </div>
+            <div>
+              <h4>{{item.user}}</h4>
+              <p class="meta">Hosted {{item.postedTime}} • Event Organizer</p>
+            </div>
+          </div>
+          <span class="badge-event">UPCOMING EVENT</span>
+        </div>
+
+        <div class="event-details">
+          <h3 class="event-title">{{item.title}}</h3>
+          <p class="event-desc">{{item.desc}}</p>
+
+          @if (item.mediaUrl) {
+          <div class="post-image-container">
+            <img [src]="item.mediaUrl" alt="Event Banner" class="post-image" />
+          </div>
+          }
+
+          <div class="event-meta-info">
+            <div class="meta-row">
+              <i class='bx bx-calendar-event'></i>
+              <span>{{item.eventDate}}</span>
+            </div>
+            @if (item.location) {
+            <div class="meta-row">
+              <i class='bx bx-map'></i>
+              <span>{{item.location}}</span>
+            </div>
+            }
+          </div>
+        </div>
+
+        <div class="event-footer flex-between">
+          <span class="attendees-count"><i class='bx bx-group'></i> Interested</span>
+          @if (item.virtualLink) {
+          <a [href]="item.virtualLink" target="_blank" class="btn-black" style="text-decoration: none;">Join Event</a>
+          } @else {
+          <button class="btn-black">RSVP Now</button>
+          }
+        </div>
+      </div>
+      }
+      }
+
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal Overlays -->
+@if (activeModal) {
+<div class="modal-overlay" (click)="closeModal()">
+  <div class="modal-card" (click)="$event.stopPropagation()">
+    <div class="modal-header flex-between">
+      <h3>
+        @if (activeModal === 'normal') { <i class='bx bx-edit-alt'></i> Create a Post }
+        @else if (activeModal === 'event') { <i class='bx bx-calendar-event'></i> Create an Event }
+        @else if (activeModal === 'recruitment') { <i class='bx bx-briefcase'></i> Post a Job }
+      </h3>
+      <button class="close-btn" (click)="closeModal()"><i class='bx bx-x'></i></button>
+    </div>
+
+    <div class="modal-body">
+      <input type="file" id="post-media-input" style="display: none;" (change)="onMediaSelected($event)"
+        accept="image/*,video/*" />
+
+      @if (activeModal === 'normal') {
+      <form (submit)="submitPost($event)">
+        <div class="form-group">
+          <label for="post-text">Share your career update or thoughts</label>
+          <textarea id="post-text" placeholder="What's on your mind? You can also ask AI for writing help..." rows="5"
+            required></textarea>
+        </div>
+
+        @if (selectedMediaFile) {
+        <div class="form-group">
+          <div class="media-preview-container">
+            <span class="media-preview-name"><i class='bx bx-file'></i> {{selectedMediaFile.name}}</span>
+            <button type="button" class="remove-media-btn" (click)="clearSelectedMedia()"><i
+                class='bx bx-x'></i></button>
+          </div>
+        </div>
+        }
+
+        <div class="form-row flex-between">
+          <div class="form-attachments">
+            <button type="button" class="attachment-btn" title="Add Image" (click)="triggerMediaUpload()"><i
+                class='bx bx-image'></i></button>
+            <button type="button" class="attachment-btn" title="Add Tag"><i class='bx bx-tag'></i></button>
+          </div>
+        </div>
+
+        <div class="modal-footer flex-end">
+          <button type="button" class="btn-secondary" (click)="closeModal()" [disabled]="isSubmitting">Cancel</button>
+          <button type="submit" class="btn-black" [disabled]="isSubmitting">
+            {{ isSubmitting ? 'Posting...' : 'Post' }}
+          </button>
+        </div>
+      </form>
+      }
+
+      @if (activeModal === 'event') {
+      <form (submit)="submitPost($event)">
+        <div class="form-group">
+          <label for="event-title">Event Title</label>
+          <input type="text" id="event-title" placeholder="e.g. Web3 Development Workshop" required />
+        </div>
+
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label for="event-date">Date</label>
+            <input type="date" id="event-date" required />
+          </div>
+          <div class="form-group">
+            <label for="event-time">Time</label>
+            <input type="time" id="event-time" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="event-location">Location / Virtual Link</label>
+          <input type="text" id="event-location" placeholder="e.g. Zoom Link or Conference Hall A" required />
+        </div>
+
+        <div class="form-group">
+          <label for="event-desc">Description</label>
+          <textarea id="event-desc" placeholder="Provide event schedule, speakers or summary details..." rows="3"
+            required></textarea>
+        </div>
+
+        @if (selectedMediaFile) {
+        <div class="form-group">
+          <div class="media-preview-container">
+            <span class="media-preview-name"><i class='bx bx-file'></i> {{selectedMediaFile.name}}</span>
+            <button type="button" class="remove-media-btn" (click)="clearSelectedMedia()"><i
+                class='bx bx-x'></i></button>
+          </div>
+        </div>
+        }
+
+        <div class="form-row flex-between">
+          <div class="form-attachments">
+            <button type="button" class="attachment-btn" title="Add Image" (click)="triggerMediaUpload()"><i
+                class='bx bx-image'></i></button>
+          </div>
+        </div>
+
+        <div class="modal-footer flex-end">
+          <button type="button" class="btn-secondary" (click)="closeModal()" [disabled]="isSubmitting">Cancel</button>
+          <button type="submit" class="btn-black" [disabled]="isSubmitting">
+            {{ isSubmitting ? 'Creating...' : 'Create Event' }}
+          </button>
+        </div>
+      </form>
+      }
+
+      @if (activeModal === 'recruitment') {
+      <form (submit)="submitPost($event)">
+        <div class="form-group">
+          <label for="job-title">Job Title</label>
+          <input type="text" id="job-title" placeholder="e.g. Senior Frontend Engineer" required />
+        </div>
+
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label for="job-location">Location Type</label>
+            <select id="job-location">
+              <option value="Remote">Remote</option>
+              <option value="Hybrid">Hybrid</option>
+              <option value="On-site">On-site</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="job-comp">Compensation Range</label>
+            <input type="text" id="job-comp" placeholder="e.g. $160k - $210k" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="job-tags">Skills / Tags (comma separated)</label>
+          <input type="text" id="job-tags" placeholder="e.g. React, PostgreSQL, Vector DBs" required />
+        </div>
+
+        <div class="form-group">
+          <label for="job-url">Job Application URL</label>
+          <input type="text" id="job-url" placeholder="e.g. https://careers.company.com/apply" required />
+        </div>
+
+        <div class="form-group">
+          <label for="job-desc">Job Description</label>
+          <textarea id="job-desc"
+            placeholder="Briefly describe the role, requirements and competitive equity details..." rows="3"
+            required></textarea>
+        </div>
+
+        <div class="form-group checkbox-group flex-center">
+          <input type="checkbox" id="job-urgent" checked />
+          <label for="job-urgent">Mark as Urgent Hiring</label>
+        </div>
+
+        @if (selectedMediaFile) {
+        <div class="form-group">
+          <div class="media-preview-container">
+            <span class="media-preview-name"><i class='bx bx-file'></i> {{selectedMediaFile.name}}</span>
+            <button type="button" class="remove-media-btn" (click)="clearSelectedMedia()"><i
+                class='bx bx-x'></i></button>
+          </div>
+        </div>
+        }
+
+        <div class="form-row flex-between">
+          <div class="form-attachments">
+            <button type="button" class="attachment-btn" title="Add Image" (click)="triggerMediaUpload()"><i
+                class='bx bx-image'></i></button>
+          </div>
+        </div>
+
+        <div class="modal-footer flex-end">
+          <button type="button" class="btn-secondary" (click)="closeModal()" [disabled]="isSubmitting">Cancel</button>
+          <button type="submit" class="btn-black" [disabled]="isSubmitting">
+            {{ isSubmitting ? 'Posting...' : 'Post Job' }}
+          </button>
+        </div>
+      </form>
+      }
+    </div>
+  </div>
+</div>
+}

@@ -1,0 +1,232 @@
+/* --- Base Variables & Setup --- */
+:host {
+  --primary-color: #1A36A8;
+  --primary-light: #2A48C8;
+  --bg-color: #F8F9FB;
+  --text-dark: #1A1A24;
+  --text-muted: #6B7280;
+  --card-bg: #FFFFFF;
+  --ai-card-bg: #9FA8DA;
+  --dashboard-bg: #0B132B;
+  --border-color: #E5E7EB;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.landing-page {
+  background-color: var(--bg-color);
+  color: var(--text-dark);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Typography --- */
+h1, h2, h3 { margin: 0; font-weight: 700; }
+a { cursor:pointer; }
+a:hover { text-decoration: underline; }
+p { line-height: 1.6; color: var(--text-muted); }
+
+/* --- Buttons --- */
+.btn {
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-primary { background-color: var(--primary-color); color: white; }
+.btn-primary:hover { background-color: var(--primary-light); }
+.btn-outline { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-dark); }
+.btn-large { padding: 0.875rem 1.75rem; font-size: 1rem; }
+.w-100 { width: 100%; margin-top: 1rem; margin-bottom: 1.5rem;}
+
+/* --- Header --- */
+/* --- Header --- */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 5%;
+  background: white;
+  
+  /* Add these lines to make it sticky */
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  
+  /* Optional: Add a subtle border or shadow to separate it from scrolling content */
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* --- Replace the existing .logo CSS with the following --- */
+.logo { 
+  display: flex;
+  align-items: center;
+  gap: 0.6rem; /* Space between the rocket and the text */
+  color: var(--primary-color); 
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  stroke: var(--primary-color);
+  /* Optional: Add a slight rotation if you want to perfectly match the angle in the image */
+  transform: rotate(5deg); 
+}
+
+.logo-text {
+  font-size: 1.75rem; 
+  font-weight: 800; 
+  letter-spacing: -0.02em; /* Pulls the letters slightly closer together like the image */
+}
+
+.nav-links { display: flex; gap: 2rem; }
+.nav-links a { font-size: 0.95rem; font-weight: 500; color: var(--text-muted); }
+.nav-links a:hover { color: var(--text-dark); }
+.auth-buttons { display: flex; align-items: center; gap: 1.5rem; }
+.login-link { font-weight: 600; }
+
+/* --- Hero Section --- */
+.hero-section {
+  display: flex;
+  padding: 4rem 5%;
+  gap: 4rem;
+  align-items: center;
+  background: linear-gradient(to bottom, white, var(--bg-color));
+}
+
+.hero-content { flex: 1; }
+.badge {
+  display: inline-block;
+  background: #E8EDFF;
+  color: var(--primary-color);
+  padding: 0.4rem 1rem;
+  border-radius: 50px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+
+.hero-content h1 {
+  font-size: 4rem;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+}
+.highlight { color: var(--primary-color); }
+
+.subtitle { font-size: 1.125rem; margin-bottom: 2.5rem; max-width: 90%; }
+
+.cta-group { display: flex; gap: 1rem; margin-bottom: 2.5rem; }
+
+.social-proof { display: flex; align-items: center; gap: 1rem; }
+.avatar-group { display: flex; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background-color: #CBD5E1; border: 2px solid white;
+  margin-left: -10px;
+}
+.avatar:first-child { margin-left: 0; background-color: #94A3B8; }
+.proof-text { font-size: 0.875rem; color: var(--text-muted); }
+
+.hero-image-container { flex: 1; display: flex; justify-content: center; }
+.mockup-placeholder {
+  width: 100%; aspect-ratio: 1/1;
+  background-color: #2F4C63; /* Image background color approx */
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+}
+
+/* --- Responsive Adjustments --- */
+
+/* When the screen is 768px wide or smaller (typical tablet/mobile) */
+@media (max-width: 970px) {
+  .hero-section {
+    /* This changes the layout from side-by-side to stacked */
+    flex-direction: column; 
+    
+    /* Optional: Center the text for mobile devices */
+    text-align: center;
+    
+    /* Optional: Adjust spacing between the stacked items */
+    gap: 2rem; 
+  }
+
+  /* Center the buttons on mobile so they don't look awkwardly left-aligned */
+  .cta-group {
+    justify-content: center;
+  }
+}
+
+/* --- Features Section --- */
+.features-section { padding: 4rem 5%; }
+.features-header { text-align: center; max-width: 600px; margin: 0 auto 4rem; }
+.features-header h2 { font-size: 2.5rem; margin-bottom: 1rem; }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 1.5rem;
+}
+
+.card {
+  border-radius: 12px;
+  padding: 2rem;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Specific Cards */
+.marketplace-card {
+  background: white; border: 1px solid var(--border-color);
+  grid-column: 1 / 2; grid-row: 1 / 2;
+}
+.card-icon { width: 40px; height: 40px; background: #A7F3D0; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem; }
+
+.ai-card {
+  background: var(--ai-card-bg); color: var(--text-dark);
+  text-align: center;
+  grid-column: 2 / 3; grid-row: 1 / 2;
+}
+.ai-avatar { width: 60px; height: 60px; background: rgba(0,0,0,0.1); border-radius: 50%; margin: 0 auto 1.5rem; }
+.ai-card p { color: rgba(0,0,0,0.7); font-size: 0.9rem; }
+.metric-row {
+  background: rgba(255,255,255,0.9); padding: 0.75rem 1rem; border-radius: 6px;
+  display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600;
+}
+.text-success { color: #059669; }
+
+.dashboard-card {
+  background: var(--dashboard-bg); color: white;
+  grid-column: 1 / -1; grid-row: 2 / 3;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.dashboard-content { flex: 1; max-width: 50%; }
+.dashboard-content p { color: #9CA3AF; }
+
+/* Dashboard Chart Visualization Placeholder */
+.chart-placeholder {
+  display: flex; align-items: flex-end; gap: 0.5rem; height: 100px;
+}
+.bar { width: 30px; background: #1E3A8A; border-radius: 4px 4px 0 0; }
+.bar-1 { height: 30%; } .bar-2 { height: 60%; } .bar-3 { height: 80%; }
+.bar-4 { height: 100%; background: #059669; } /* Highlight bar */
+.bar-5 { height: 40%; } .bar-6 { height: 20%; }
+
+
+/* --- Footer --- */
+.site-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 2rem 5%; border-top: 1px solid var(--border-color); background: var(--bg-color);
+  margin-top: auto;
+}
+.footer-logo { font-weight: 800; color: var(--primary-color); margin-bottom: 0.25rem; }
+.copyright { font-size: 0.75rem; color: var(--text-muted); margin: 0;}
+.footer-links { display: flex; gap: 1.5rem; font-size: 0.875rem; color: var(--text-muted); }
+.footer-social { display: flex; gap: 1rem }

@@ -1,0 +1,436 @@
+<!-- Topbar -->
+<header class="topbar flex-between">
+  <div class="topbar-left">
+    <button class="icon-btn burger-btn" (click)="internal.toggleSidebar()">
+      <i class='bx bx-menu'></i>
+    </button>
+    <div class="search-bar">
+      <i class='bx bx-search'></i>
+      <input type="text" placeholder="Search matched jobs..." [value]="topbarSearchQuery" (input)="onTopbarSearch($event)" />
+      <i class='bx bx-sparkles right-icon'></i>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="icon-btn"><i class='bx bx-bell'></i></button>
+    <button class="icon-btn"><i class='bx bx-cog'></i></button>
+    <div class="user-avatar">
+      <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="User Avatar" />
+    </div>
+  </div>
+</header>
+
+<div class="job-matching-container">
+  <!-- Top Tab Navigation -->
+  <div class="dashboard-header-tabs">
+    <button (click)="switchTab('search')" [class.active]="currentTab === 'search'" class="tab-btn">
+      <i class="bx bx-search-alt"></i> Search & Extract
+    </button>
+    <button (click)="switchTab('recommendations')" [class.active]="currentTab === 'recommendations'" class="tab-btn">
+      <i class="bx bx-brain"></i> AI Recommendations
+      <span class="badge" *ngIf="remapResults.length > 0">{{ remapResults.length }}</span>
+    </button>
+  </div>
+
+  <!-- Tab 1: Search & Extract -->
+  <div *ngIf="currentTab === 'search'" class="tab-content-area">
+    <!-- Hero Section -->
+    <div class="hero-section">
+      <h1 class="hero-title">Discover your perfect job matches.</h1>
+      <p class="hero-subtitle">Let AI scan the web using the resume in your profile to find the best roles for you.</p>
+    </div>
+
+    <!-- Advanced Search Card -->
+    <div class="search-glass-card">
+      <!-- Warning Alert: No Resume Found -->
+      <div class="no-resume-alert" *ngIf="!profileResumeUrl">
+        <div class="alert-left">
+          <i class="bx bx-error-circle alert-icon"></i>
+          <div class="alert-text-content">
+            <h4 class="alert-title">No Resume Linked</h4>
+            <p class="alert-desc">We couldn't find a resume PDF in your profile. Please upload one in the Profile page first.</p>
+          </div>
+        </div>
+        <a routerLink="/internal/profile" class="btn-profile-link">Go to Profile <i class="bx bx-right-arrow-alt"></i></a>
+      </div>
+
+      <form (ngSubmit)="onSubmit()" #matcherForm="ngForm" class="search-form-layout">
+        <!-- Job Title -->
+        <div class="input-wrapper">
+          <i class="bx bx-briefcase input-icon"></i>
+          <input type="text" id="searchQuery" name="searchQuery" [(ngModel)]="searchQuery" placeholder="Job Title (or leave blank for AI match)" class="form-input" [disabled]="!profileResumeUrl" />
+        </div>
+
+        <!-- Country -->
+        <div class="input-wrapper">
+          <i class="bx bx-globe input-icon"></i>
+          <input type="text" id="country" name="country" [(ngModel)]="country" required placeholder="Country (e.g. Malaysia)" class="form-input" list="countryList" [disabled]="!profileResumeUrl" />
+          <datalist id="countryList">
+            <option *ngFor="let c of countries" [value]="c"></option>
+          </datalist>
+        </div>
+
+        <!-- Profile Resume Status -->
+        <div class="input-wrapper resume-status-wrapper" [class.no-resume]="!profileResumeUrl">
+          <i class="bx" [class.bx-file]="profileResumeUrl" [class.bx-error-circle]="!profileResumeUrl" [class.text-danger]="!profileResumeUrl"></i>
+          <span class="resume-status-text">
+            @if (profileResumeUrl) {
+              Resume loaded from Profile <i class="bx bx-check-circle text-success" style="font-weight: bold; margin-left: 4px;"></i>
+            } @else {
+              No resume found in profile <i class="bx bx-x-circle text-danger" style="font-weight: bold; margin-left: 4px;"></i>
+            }
+          </span>
+        </div>
+
+        <!-- Buttons -->
+        <div class="button-group">
+          <button type="button" (click)="toggleAdvancedFilters()" class="filter-toggle-btn" [class.active]="showAdvancedFilters" [disabled]="!profileResumeUrl">
+            <i class="bx bx-slider-alt"></i> Filters
+          </button>
+          
+          <button type="submit" class="submit-search-btn" [disabled]="isLoading || isEnhancing || isScoring || !profileResumeUrl">
+            <span *ngIf="!isLoading && !isEnhancing && !isScoring">Search</span>
+            <span *ngIf="isLoading || isEnhancing || isScoring" class="loader-spinner"></span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Advanced Filters Dropdown -->
+      <div *ngIf="showAdvancedFilters" class="advanced-filters-panel">
+        <div class="filter-field">
+          <label for="state" class="filter-label">State / Region</label>
+          <input type="text" id="state" name="state" [(ngModel)]="state" placeholder="e.g., Selangor or CA" class="filter-input-text" />
+        </div>
+        
+        <div class="filter-field">
+          <label for="expectedSalary" class="filter-label flex-between">
+            <span>Expected Salary</span> 
+            <span class="salary-highlight">{{ expectedSalary > 0 ? currencySymbol + (expectedSalary | number) : 'Any' }}</span>
+          </label>
+          <input type="range" id="expectedSalary" name="expectedSalary" [(ngModel)]="expectedSalary" min="0" max="300000" step="500" class="salary-slider" />
+        </div>
+
+        <div class="filter-field justify-center">
+          <label class="filter-label">Job Type</label>
+          <div class="checkbox-toggle-container">
+            <label class="switch-ui">
+              <input type="checkbox" id="isIntern" name="isIntern" [(ngModel)]="isIntern" />
+              <span class="switch-slider"></span>
+            </label>
+            <span class="checkbox-label-text">Internship Only</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Loading Stages -->
+    <div class="loading-state-card" *ngIf="isLoading || isEnhancing || isScoring">
+      <div class="loading-spinner-wrapper">
+        <div class="pulse-ring"></div>
+        <i class="bx" [class.bx-search-alt]="isLoading" [class.bx-dna]="isEnhancing" [class.bx-brain]="isScoring"></i>
+      </div>
+      
+      <h3 class="loading-stage-title">
+        <span *ngIf="isLoading">Scanning the web for opportunities...</span>
+        <span *ngIf="isEnhancing">Gemma extracting deep job requirements...</span>
+        <span *ngIf="isScoring">Analyzing and calculating compatibility score...</span>
+      </h3>
+      <p class="loading-stage-desc">
+        <span *ngIf="isLoading">Running SerpApi query based on your profile roles and expectations.</span>
+        <span *ngIf="isEnhancing">Reviewing responsibilities, mandatory core skills, and soft skills.</span>
+        <span *ngIf="isScoring">Running ReMAP semantic vector search and logic analyzer.</span>
+      </p>
+
+      <!-- Loading Progress Steps UI -->
+      <div class="loading-steps-indicator">
+        <div class="step-item" [class.done]="!isLoading" [class.active]="isLoading">
+          <span class="step-number">1</span>
+          <span class="step-text">Job Scan</span>
+        </div>
+        <div class="step-line" [class.done]="!isLoading && !isEnhancing"></div>
+        <div class="step-item" [class.done]="hasSearched && !isLoading && !isEnhancing" [class.active]="isEnhancing">
+          <span class="step-number">2</span>
+          <span class="step-text">AI Extract</span>
+        </div>
+        <div class="step-line" [class.done]="hasSearched && !isLoading && !isEnhancing && !isScoring"></div>
+        <div class="step-item" [class.active]="isScoring">
+          <span class="step-number">3</span>
+          <span class="step-text">Score Match</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Default Placeholder State -->
+    <div class="placeholder-state" *ngIf="!hasSearched">
+      <i class="bx bx-file-find placeholder-icon"></i>
+      <h3 class="placeholder-title">No search executed</h3>
+      <p class="placeholder-text">Enter your preferences above to discover curated opportunities.</p>
+    </div>
+
+    <!-- Found Roles Section -->
+    <div class="results-container animate-fade-in" *ngIf="hasSearched && extractedJobsGroups.length > 0 && !isLoading">
+      <div class="flex-between mb-6">
+        <h2 class="section-title">Raw Extraction Streams</h2>
+        <button (click)="resetSearch()" class="reset-search-btn">
+          <i class="bx bx-refresh"></i> Reset Search
+        </button>
+      </div>
+
+      <div *ngIf="filteredExtractedJobsGroups.length > 0">
+        <div *ngFor="let group of filteredExtractedJobsGroups" class="role-group-section">
+          <h3 class="role-group-title"><i class="bx bx-right-arrow-circle"></i> {{ group.role }}</h3>
+          
+          <div class="jobs-card-grid">
+            <div *ngFor="let job of group.jobs" 
+                 class="job-stream-card"
+                 [class.extracting]="job.isExtracting"
+                 (click)="!job.isExtracting && openJobDetail(job)">
+              
+              <div class="job-card-header">
+                <h4 class="job-card-title">{{ job.title }}</h4>
+                <span class="company-badge">{{ job.company_name }}</span>
+              </div>
+
+              <div class="job-card-meta">
+                <span class="meta-item"><i class="bx bx-map"></i> {{ job.location }}</span>
+                <span class="meta-item" *ngIf="job.salary"><i class="bx bx-money"></i> {{ job.salary }}</span>
+              </div>
+
+              <!-- Extraction Status footer -->
+              <div class="job-card-footer">
+                <div *ngIf="job.isExtracting" class="status-extracting-label">
+                  <span class="mini-spinner"></span> Extracting requirements...
+                </div>
+                <div *ngIf="!job.isExtracting" class="status-ready-label">
+                  Ready <i class="bx bx-chevron-right"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- No match search placeholder -->
+      <div class="placeholder-state" *ngIf="filteredExtractedJobsGroups.length === 0">
+        <i class="bx bx-search placeholder-icon"></i>
+        <h3 class="placeholder-title">No matches found</h3>
+        <p class="placeholder-text">Try adjusting your search query in the topbar.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2: AI Recommendations -->
+  <div *ngIf="currentTab === 'recommendations'" class="tab-content-area animate-fade-in">
+    <!-- Recommendations Hero -->
+    <div class="hero-section text-center">
+      <h1 class="hero-title">Highly Recommended Matches</h1>
+      <p class="hero-subtitle">These roles are AI-curated specifically for your skills and experience, sorted by compatibility score.</p>
+    </div>
+
+    <!-- No results state -->
+    <div class="placeholder-state" *ngIf="remapResults.length === 0 && !isScoring">
+      <i class="bx bx-radar placeholder-icon"></i>
+      <h3 class="placeholder-title">No Recommendations Available</h3>
+      <p class="placeholder-text">Run a search under the "Search & Extract" tab to calculate matching compatibility.</p>
+      <button (click)="switchTab('search')" class="go-to-search-btn">Go to Search</button>
+    </div>
+
+    <!-- Recommendations loading state -->
+    <div class="loading-state-card" *ngIf="isScoring">
+      <div class="loading-spinner-wrapper">
+        <div class="pulse-ring"></div>
+        <i class="bx bx-brain"></i>
+      </div>
+      <h3 class="loading-stage-title">Calculating compatibility scores...</h3>
+    </div>
+
+    <!-- Recommendation Feed List -->
+    <div class="recommendations-feed" *ngIf="remapResults.length > 0 && !isScoring">
+      <div class="flex-between mb-4">
+        <span class="results-count">Showing {{ filteredRemapResults.length }} matching results</span>
+        <button (click)="resetSearch()" class="reset-search-btn">
+          <i class="bx bx-refresh"></i> Reset Search
+        </button>
+      </div>
+
+      <div class="feed-list" *ngIf="filteredRemapResults.length > 0">
+        <div *ngFor="let job of filteredRemapResults" 
+             class="recommended-job-card" 
+             (click)="openJobDetail(job)">
+          
+          <!-- Decorative match-score gradient overlay based on percentage -->
+          <div class="match-indicator-bar" 
+               [style.background-color]="(job.logical_match_score || 0) >= 80 ? 'var(--color-success)' : ((job.logical_match_score || 0) >= 60 ? 'var(--color-warning)' : 'var(--color-danger)')">
+          </div>
+
+          <div class="recommended-card-content">
+            <!-- Left Info Block -->
+            <div class="card-main-info">
+              <div class="job-meta-top">
+                <span class="card-company-name">{{ job.company_name }}</span>
+                <span class="meta-bullet">•</span>
+                <span class="card-location"><i class="bx bx-map"></i> {{ job.location }}</span>
+              </div>
+              <h3 class="card-job-title">{{ job.title }}</h3>
+              
+              <!-- AI description snippet -->
+              <p class="card-ai-remap-desc" *ngIf="job.remap_description">
+                <i class="bx bxs-quote-left"></i> {{ job.remap_description }}
+              </p>
+
+              <!-- Optional skills matched & missing skills badges -->
+              <div class="badge-row" *ngIf="job.unmatched_mandatory_skills && job.unmatched_mandatory_skills.length > 0">
+                <span class="missing-badge-title">Missing:</span>
+                <span *ngFor="let skill of job.unmatched_mandatory_skills.slice(0, 3)" class="missing-skill-badge">
+                  {{ skill }}
+                </span>
+                <span class="more-badge" *ngIf="job.unmatched_mandatory_skills.length > 3">
+                  +{{ job.unmatched_mandatory_skills.length - 3 }} more
+                </span>
+              </div>
+            </div>
+
+            <!-- Right Score Circle -->
+            <div class="card-score-zone">
+              <div class="score-circle-outer" 
+                   [class.high-match]="(job.logical_match_score || 0) >= 80"
+                   [class.mid-match]="(job.logical_match_score || 0) >= 60 && (job.logical_match_score || 0) < 80"
+                   [class.low-match]="(job.logical_match_score || 0) < 60">
+                <span class="score-percentage">{{ job.logical_match_score }}%</span>
+                <span class="score-label">Match</span>
+              </div>
+              
+              <button class="view-details-arrow-btn">
+                <i class="bx bx-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- No match search placeholder -->
+      <div class="placeholder-state" *ngIf="filteredRemapResults.length === 0">
+        <i class="bx bx-search placeholder-icon"></i>
+        <h3 class="placeholder-title">No matches found</h3>
+        <p class="placeholder-text">Try adjusting your search query in the topbar or reset the search.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Slide-Out Details Drawer -->
+  <div class="drawer-overlay" *ngIf="selectedJob" (click)="closeJobDetail()"></div>
+  
+  <div class="job-detail-drawer" [class.open]="selectedJob">
+    <div class="drawer-header" *ngIf="selectedJob">
+      <button (click)="closeJobDetail()" class="close-drawer-btn">
+        <i class="bx bx-x"></i>
+      </button>
+      <span class="drawer-header-label">Job Match Insights</span>
+    </div>
+
+    <div class="drawer-body" *ngIf="selectedJob">
+      <!-- Title & Company -->
+      <div class="drawer-hero-block">
+        <h2 class="drawer-job-title">{{ selectedJob.title }}</h2>
+        <p class="drawer-company">{{ selectedJob.company_name }}</p>
+        
+        <div class="drawer-badges">
+          <span class="drawer-badge-item"><i class="bx bx-map"></i> {{ selectedJob.location }}</span>
+          <span class="drawer-badge-item" *ngIf="selectedJob.salary"><i class="bx bx-money"></i> {{ selectedJob.salary }}</span>
+          <span class="drawer-badge-item" *ngIf="selectedJob.schedule_type"><i class="bx bx-time"></i> {{ selectedJob.schedule_type }}</span>
+          <span class="drawer-badge-item" *ngIf="selectedJob.work_from_home"><i class="bx bx-home-alt"></i> Remote Friendly</span>
+        </div>
+      </div>
+
+      <!-- AI Score & Insights section -->
+      <div class="drawer-ai-section" *ngIf="selectedJob.logical_match_score !== undefined">
+        <div class="drawer-ai-header">
+          <i class="bx bx-brain ai-brain-icon animate-pulse"></i>
+          <span class="ai-header-text">AI Compatibility Analysis</span>
+          <span class="drawer-score-badge"
+                [class.high-score]="selectedJob.logical_match_score >= 80"
+                [class.mid-score]="selectedJob.logical_match_score >= 60 && selectedJob.logical_match_score < 80"
+                [class.low-score]="selectedJob.logical_match_score < 60">
+            {{ selectedJob.logical_match_score }}% Match
+          </span>
+        </div>
+
+        <!-- Dealbreaker warning if score is low -->
+        <div class="dealbreaker-alert" *ngIf="selectedJob.logical_match_score < 50">
+          <i class="bx bx-error-circle"></i>
+          <div>
+            <h4 class="alert-title">Dealbreaker Gap Detected</h4>
+            <p class="alert-desc">Your profile has multiple missing core skills that are mandatory for this role.</p>
+          </div>
+        </div>
+
+        <p class="drawer-ai-description" *ngIf="selectedJob.remap_description">
+          {{ selectedJob.remap_description }}
+        </p>
+
+        <!-- Skill & Responsibility Gap Analysis -->
+        <div class="gap-analysis-grids">
+          <!-- Missing Mandatory Skills -->
+          <div class="gap-grid-box" *ngIf="selectedJob.unmatched_mandatory_skills && selectedJob.unmatched_mandatory_skills.length > 0">
+            <h4 class="gap-box-title missing"><i class="bx bx-x-circle"></i> Missing Mandatory Skills</h4>
+            <div class="gap-badge-list">
+              <span *ngFor="let skill of selectedJob.unmatched_mandatory_skills" class="skill-gap-badge missing">
+                {{ skill }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Matched Optional Skills -->
+          <div class="gap-grid-box" *ngIf="selectedJob.matched_optional_skills && selectedJob.matched_optional_skills.length > 0">
+            <h4 class="gap-box-title matched"><i class="bx bx-check-circle"></i> Matched Optional Skills</h4>
+            <div class="gap-badge-list">
+              <span *ngFor="let skill of selectedJob.matched_optional_skills" class="skill-gap-badge matched">
+                {{ skill }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Missing Responsibilities -->
+          <div class="gap-grid-box full-width" *ngIf="selectedJob.unmatched_responsibilities && selectedJob.unmatched_responsibilities.length > 0">
+            <h4 class="gap-box-title missing"><i class="bx bx-info-circle"></i> Unmatched Key Responsibilities</h4>
+            <ul class="unmatched-resp-list">
+              <li *ngFor="let resp of selectedJob.unmatched_responsibilities">
+                {{ resp }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Job Description -->
+      <div class="drawer-details-section">
+        <h3 class="section-subtitle">Job Description</h3>
+        <p class="drawer-body-text">{{ selectedJob.description }}</p>
+      </div>
+
+      <!-- Key Responsibilities -->
+      <div class="drawer-details-section" *ngIf="selectedJob.key_responsibilities && selectedJob.key_responsibilities.length > 0">
+        <h3 class="section-subtitle">Key Responsibilities</h3>
+        <ul class="drawer-list-items">
+          <li *ngFor="let resp of selectedJob.key_responsibilities">{{ resp }}</li>
+        </ul>
+      </div>
+
+      <!-- Skills Split -->
+      <div class="drawer-skills-split">
+        <div class="skills-block" *ngIf="selectedJob.core_skills && selectedJob.core_skills.length > 0">
+          <h3 class="section-subtitle">Core Technical Skills</h3>
+          <div class="skills-chips">
+            <span *ngFor="let skill of selectedJob.core_skills" class="skill-chip tech">{{ skill }}</span>
+          </div>
+        </div>
+
+        <div class="skills-block" *ngIf="selectedJob.soft_skills && selectedJob.soft_skills.length > 0">
+          <h3 class="section-subtitle">Soft Skills</h3>
+          <div class="skills-chips">
+            <span *ngFor="let skill of selectedJob.soft_skills" class="skill-chip soft">{{ skill }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

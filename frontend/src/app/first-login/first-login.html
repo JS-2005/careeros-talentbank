@@ -1,0 +1,191 @@
+<div class="onboarding-page flex-center">
+    <div class="onboarding-container">
+        
+        <!-- Logo Header -->
+        <div class="onboarding-header text-center">
+            <div class="logo flex-center">
+                <i class='bx bx-rocket logo-icon'></i>
+                <span class="logo-text">CareerOS</span>
+            </div>
+            <p class="onboarding-subtitle">Let's configure your professional candidate profile</p>
+        </div>
+
+        <div class="card onboarding-card animate-fade-in">
+            
+            <!-- Progress Tracker -->
+            <div class="progress-tracker flex-between">
+                <div class="progress-step" [class.active]="currentStage >= 1" [class.completed]="currentStage > 1">
+                    <span class="step-num">1</span>
+                    <span class="step-label">Basic Info</span>
+                </div>
+                <div class="progress-line" [class.completed]="currentStage > 1"></div>
+                <div class="progress-step" [class.active]="currentStage >= 2" [class.completed]="currentStage > 2">
+                    <span class="step-num">2</span>
+                    <span class="step-label">Interests</span>
+                </div>
+                <div class="progress-line" [class.completed]="currentStage > 2"></div>
+                <div class="progress-step" [class.active]="currentStage >= 3" [class.completed]="currentStage > 3">
+                    <span class="step-num">3</span>
+                    <span class="step-label">Resume</span>
+                </div>
+            </div>
+
+            <!-- Loader -->
+            @if (loading) {
+                <div class="onboarding-loader text-center">
+                    <i class='bx bx-loader-alt bx-spin loader-icon'></i>
+                    <p>Fetching user details...</p>
+                </div>
+            } @else {
+                <!-- Error Alert -->
+                @if (errorMessage) {
+                    <div class="alert alert-danger animate-fade-in">
+                        <i class='bx bxs-error-circle'></i> {{ errorMessage }}
+                    </div>
+                }
+
+                <!-- STAGE 1: BASIC INFO -->
+                @if (currentStage === 1) {
+                    <div class="stage-container animate-fade-in">
+                        <h2 class="stage-title">Personal Details</h2>
+                        <p class="stage-desc">Set up your display name and web channels.</p>
+
+                        <div class="avatar-setup flex-center flex-direction-column">
+                            <div class="avatar-preview">
+                                <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="Google Avatar Preview" />
+                            </div>
+                            <span class="avatar-tip">Using your Google account profile picture</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fullName">Full Name <span class="required">*</span></label>
+                            <input id="fullName" type="text" [(ngModel)]="profile.full_name" placeholder="Enter your full name" class="input-field" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Social Media Channels</label>
+                            <div class="social-links-list">
+                                @for (url of profile.social_media_url; track url; let idx = $index) {
+                                    <div class="social-badge flex-between">
+                                        <span class="flex-center">
+                                            <i [class]="getSocialIconClass(url)"></i>
+                                            <span>{{ getSocialLabel(url) }}</span>
+                                        </span>
+                                        <button class="remove-badge-btn" (click)="removeSocial(idx)">&times;</button>
+                                    </div>
+                                }
+                            </div>
+                            
+                            <form (submit)="addSocial($event)" class="add-input-row">
+                                <input type="text" [(ngModel)]="newSocialUrl" name="newSocial" placeholder="e.g. github.com/username" class="input-field-sm" />
+                                <button type="submit" class="btn-add">Add Link</button>
+                            </form>
+                        </div>
+                    </div>
+                }
+
+                <!-- STAGE 2: INTEREST AREAS -->
+                @if (currentStage === 2) {
+                    <div class="stage-container animate-fade-in">
+                        <h2 class="stage-title">Skills & Fields</h2>
+                        <p class="stage-desc">Add areas you are passionate about. This helps match you with jobs.</p>
+
+                        <div class="tags-container-box">
+                            <div class="tags-chips-list">
+                                @if (profile.interest_area.length === 0) {
+                                    <p class="empty-placeholder-text">No interest tags added yet. Feel free to add some below or skip.</p>
+                                }
+                                @for (tag of profile.interest_area; track tag; let idx = $index) {
+                                    <span class="tag-chip-badge">
+                                        {{ tag }}
+                                        <button class="remove-tag-btn" (click)="removeInterest(idx)">&times;</button>
+                                    </span>
+                                }
+                            </div>
+
+                            <form (submit)="addInterest($event)" class="add-input-row margin-top-lg">
+                                <input type="text" [(ngModel)]="newInterest" name="newTag" placeholder="e.g. Angular, Node.js, UI/UX" class="input-field-sm" />
+                                <button type="submit" class="btn-add">Add Tag</button>
+                            </form>
+                        </div>
+                        
+                        <div class="tip-card flex-start">
+                            <i class='bx bx-bulb tip-icon'></i>
+                            <p class="tip-text"><strong>Tip:</strong> Press "Add Tag" or enter after typing. You can skip this step and add interests later from your profile dashboard.</p>
+                        </div>
+                    </div>
+                }
+
+                <!-- STAGE 3: UPLOAD RESUME -->
+                @if (currentStage === 3) {
+                    <div class="stage-container animate-fade-in">
+                        <h2 class="stage-title">Professional Resume</h2>
+                        <p class="stage-desc">Upload your resume document so recruiters can download your credentials.</p>
+
+                        <div class="resume-upload-box">
+                            <input #fileInput type="file" (change)="onFileSelected($event)" accept=".pdf,.doc,.docx" style="display: none;" />
+                            
+                            @if (uploadingResume) {
+                                <div class="file-preview-card flex-center loading-upload">
+                                    <i class='bx bx-loader-alt bx-spin file-preview-icon'></i>
+                                    <span class="file-preview-name">Uploading {{ resumeFileName }}...</span>
+                                </div>
+                            } @else if (profile.resume_url) {
+                                <div class="file-preview-card flex-center success-upload">
+                                    <div class="success-preview-content flex-between w-100">
+                                        <div class="flex-center gap-12">
+                                            <i class='bx bxs-file-pdf file-preview-icon text-success'></i>
+                                            <div class="text-left">
+                                                <span class="file-preview-name block">{{ resumeFileName || 'Resume Attached' }}</span>
+                                                <a [href]="profile.resume_url" target="_blank" class="view-uploaded-link">View document <i class='bx bx-link-external'></i></a>
+                                            </div>
+                                        </div>
+                                        <button class="btn-remove-file" (click)="removeResume()" type="button">&times;</button>
+                                    </div>
+                                </div>
+                            } @else {
+                                <div class="file-preview-card flex-center empty-file cursor-pointer" (click)="fileInput.click()">
+                                    <i class='bx bx-cloud-upload file-preview-icon'></i>
+                                    <span class="file-preview-name">Click to upload your resume</span>
+                                    <p class="input-desc">Accepts PDF, DOC, or DOCX up to 10MB</p>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Wizard Actions -->
+                <div class="wizard-actions flex-between">
+                    <div class="left-actions">
+                        @if (currentStage > 1) {
+                            <button class="btn-secondary" (click)="prevStage()" [disabled]="saving">
+                                <i class='bx bx-chevron-left'></i> Back
+                            </button>
+                        }
+                    </div>
+                    <div class="right-actions flex-center gap-12">
+                        @if (currentStage === 2 || currentStage === 3) {
+                            <button class="btn-link" (click)="skipStage()" [disabled]="saving">
+                                Skip
+                            </button>
+                        }
+                        
+                        @if (currentStage < 3) {
+                            <button class="btn-black" (click)="nextStage()" [disabled]="saving">
+                                Continue <i class='bx bx-chevron-right'></i>
+                            </button>
+                        } @else {
+                            <button class="btn-black btn-success-gradient" (click)="completeOnboarding()" [disabled]="saving">
+                                @if (saving) {
+                                    <i class='bx bx-loader-alt bx-spin'></i> Finishing...
+                                } @else {
+                                    <i class='bx bx-check'></i> Complete Setup
+                                }
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
