@@ -6,7 +6,7 @@ app = FastAPI(title="Job Matcher API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://resume-matcher-eight-flax.vercel.app", "http://localhost:4200"], # For development, allow all origins. Consider restricting this in production.
+    allow_origins=["*"], # Allow all origins for Vercel deployment flexibility
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
