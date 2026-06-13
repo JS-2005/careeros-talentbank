@@ -9,7 +9,7 @@
         <button class="icon-btn"><i class='bx bx-bell'></i></button>
         <button class="icon-btn"><i class='bx bx-cog'></i></button>
         <div class="user-avatar">
-            <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="User Avatar" />
+            <img [src]="displayAvatarUrl" alt="User Avatar" />
         </div>
     </div>
 </header>
@@ -50,9 +50,26 @@
                 <!-- User Card -->
                 <div class="card user-card">
                     <div class="avatar-wrapper">
-                        <div class="avatar-large">
-                            <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="Avatar" />
+                        <input #avatarInput type="file" (change)="onAvatarSelected($event)" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;" />
+                        <div class="avatar-large" [class.avatar-upload-trigger]="isEditMode" (click)="isEditMode ? avatarInput.click() : null">
+                            @if (isEditMode) {
+                                @if (uploadingAvatar) {
+                                    <div class="avatar-upload-overlay active">
+                                        <i class='bx bx-loader-alt bx-spin'></i>
+                                    </div>
+                                } @else {
+                                    <div class="avatar-upload-overlay">
+                                        <i class='bx bx-camera'></i>
+                                    </div>
+                                }
+                            }
+                            <img [src]="displayAvatarUrl" alt="Avatar" />
                         </div>
+                        @if (isEditMode && profile.avatar_url) {
+                            <button type="button" class="btn-avatar-remove" (click)="removeAvatar()">
+                                <i class='bx bx-trash'></i> Remove
+                            </button>
+                        }
                     </div>
                     <div class="user-info">
                         @if (isEditMode) {

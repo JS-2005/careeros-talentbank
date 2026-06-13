@@ -20,12 +20,14 @@ export class FirstLogin implements OnInit {
   saving = false;
   errorMessage = '';
   googleAvatarUrl = '';
+  uploadingAvatar = false;
   uploadingResume = false;
   resumeFileName = '';
   
   profile = {
     auth_id: '',
     full_name: '',
+    avatar_url: '',
     social_media_url: [] as string[],
     interest_area: [] as string[],
     resume_url: '',
@@ -95,6 +97,7 @@ export class FirstLogin implements OnInit {
       const payload = {
         auth_id: this.profile.auth_id,
         full_name: this.profile.full_name.trim(),
+        avatar_url: this.profile.avatar_url.trim() || null,
         social_media_url: this.profile.social_media_url,
         interest_area: this.profile.interest_area,
         resume_url: this.profile.resume_url.trim() || null,
@@ -179,6 +182,63 @@ export class FirstLogin implements OnInit {
 
   removeInterest(index: number) {
     this.profile.interest_area.splice(index, 1);
+  }
+
+  async onAvatarSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    if (!file.type.startsWith('image/')) {
+      this.errorMessage = 'Please select an image file (PNG, JPG, GIF, WebP).';
+      setTimeout(() => this.errorMessage = '', 3000);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.errorMessage = 'Avatar image must be under 5 MB.';
+      setTimeout(() => this.errorMessage = '', 3000);
+      return;
+    }
+
+    this.uploadingAvatar = true;
+    this.errorMessage = '';
+    this.cdr.detectChanges();
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${this.profile.auth_id}-${Date.now()}.${fileExt}`;
+
+      const { data, error } = await this.authService.supabaseClient.storage
+        .from('avatar-bucket')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (error) throw error;
+
+      const { data: urlData } = this.authService.supabaseClient.storage
+        .from('avatar-bucket')
+        .getPublicUrl(fileName);
+
+      this.profile.avatar_url = urlData.publicUrl;
+    } catch (err: any) {
+      console.error('Error uploading avatar:', err);
+      this.errorMessage = err.message || 'Failed to upload avatar.';
+      this.profile.avatar_url = '';
+    } finally {
+      this.uploadingAvatar = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  removeAvatar() {
+    this.profile.avatar_url = '';
+    this.cdr.detectChanges();
+  }
+
+  get displayAvatarUrl(): string {
+    return this.profile.avatar_url || this.googleAvatarUrl || 'https://ui-avatars.com/api/?name=User';
   }
 
   async onFileSelected(event: Event) {

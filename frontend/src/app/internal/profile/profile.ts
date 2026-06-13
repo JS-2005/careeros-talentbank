@@ -19,12 +19,14 @@ export class Profile implements OnInit {
   saving = false;
   isEditMode = false;
   googleAvatarUrl = '';
+  uploadingAvatar = false;
   uploadingResume = false;
   
   profile: any = {
     id: null,
     auth_id: null,
     full_name: '',
+    avatar_url: '',
     social_media_url: [] as string[],
     resume_url: '',
     interest_area: [] as string[],
@@ -69,6 +71,7 @@ export class Profile implements OnInit {
           id: data.id,
           auth_id: data.auth_id,
           full_name: data.full_name || '',
+          avatar_url: data.avatar_url || '',
           social_media_url: data.social_media_url || [],
           resume_url: data.resume_url || '',
           interest_area: data.interest_area || [],
@@ -122,6 +125,7 @@ export class Profile implements OnInit {
       const payload = {
         auth_id: this.profile.auth_id,
         full_name: this.profile.full_name.trim(),
+        avatar_url: this.profile.avatar_url?.trim() || null,
         social_media_url: this.profile.social_media_url,
         resume_url: this.profile.resume_url?.trim() || null,
         interest_area: this.profile.interest_area,
@@ -153,6 +157,7 @@ export class Profile implements OnInit {
           id: response.data.id,
           auth_id: response.data.auth_id,
           full_name: response.data.full_name || '',
+          avatar_url: response.data.avatar_url || '',
           social_media_url: response.data.social_media_url || [],
           resume_url: response.data.resume_url || '',
           interest_area: response.data.interest_area || [],
@@ -261,6 +266,63 @@ export class Profile implements OnInit {
   removeResume() {
     this.profile.resume_url = '';
     this.cdr.detectChanges();
+  }
+
+  async onAvatarSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+    if (!file.type.startsWith('image/')) {
+      this.errorMessage = 'Please select an image file (PNG, JPG, GIF, WebP).';
+      setTimeout(() => { this.errorMessage = ''; this.cdr.detectChanges(); }, 3000);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.errorMessage = 'Avatar image must be under 5 MB.';
+      setTimeout(() => { this.errorMessage = ''; this.cdr.detectChanges(); }, 3000);
+      return;
+    }
+
+    this.uploadingAvatar = true;
+    this.errorMessage = '';
+    this.cdr.detectChanges();
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${this.profile.auth_id}-${Date.now()}.${fileExt}`;
+
+      const { data, error } = await this.authService.supabaseClient.storage
+        .from('avatar-bucket')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (error) throw error;
+
+      const { data: urlData } = this.authService.supabaseClient.storage
+        .from('avatar-bucket')
+        .getPublicUrl(fileName);
+
+      this.profile.avatar_url = urlData.publicUrl;
+    } catch (err: any) {
+      console.error('Error uploading avatar:', err);
+      this.errorMessage = err.message || 'Failed to upload avatar.';
+      this.profile.avatar_url = '';
+    } finally {
+      this.uploadingAvatar = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  removeAvatar() {
+    this.profile.avatar_url = '';
+    this.cdr.detectChanges();
+  }
+
+  get displayAvatarUrl(): string {
+    return this.profile.avatar_url || this.googleAvatarUrl || 'https://ui-avatars.com/api/?name=User';
   }
 
 
