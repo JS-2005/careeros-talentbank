@@ -81,11 +81,22 @@
             </div>
 
             <!-- Live Voice Captions Overlay -->
-            <div class="card glass-card subtitles-card flex-center" *ngIf="isRecording && currentResponseText">
-                <span class="recording-badge flex-center">
-                    <span class="live-dot"></span> SPEAKING
-                </span>
-                <p class="subtitles-text">" {{ currentResponseText }} "</p>
+            <div class="card glass-card subtitles-card flex-center" *ngIf="shouldBeRecording && !showDiagramTool" style="flex-direction: column; align-items: stretch;">
+                <div class="subtitles-header w-100" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span class="recording-badge flex-center" *ngIf="isRecording">
+                        <span class="live-dot"></span> SPEAKING
+                    </span>
+                    <span class="recording-badge flex-center" *ngIf="!isRecording" style="color: #9ca3af; background: rgba(255,255,255,0.1);">
+                        <i class='bx bx-microphone-off'></i> PAUSED (MIC MUTED)
+                    </span>
+                </div>
+                <p class="subtitles-text" *ngIf="currentResponseText">" {{ currentResponseText }} "</p>
+                <p class="subtitles-text text-muted" *ngIf="!currentResponseText" style="color: #9ca3af; font-style: italic;">Listening... Please speak your answer.</p>
+                <div class="subtitles-footer w-100" style="display: flex; justify-content: flex-end; margin-top: 15px;">
+                    <button class="flex-center" (click)="submitAnswer()" [disabled]="!currentResponseText.trim()" style="padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; gap: 8px; background: #3b82f6; color: white; font-weight: 600; opacity: 1;" [style.opacity]="!currentResponseText.trim() ? '0.5' : '1'">
+                        <i class='bx bx-send'></i> Submit Answer
+                    </button>
+                </div>
             </div>
         </section>
 
@@ -119,5 +130,127 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <!-- Diagram Drawing Tool Overlay -->
+    <div class="diagram-modal-overlay flex-center" *ngIf="showDiagramTool">
+        <div class="diagram-board glass-card animate-zoom-in">
+            <!-- Header -->
+            <div class="diagram-header flex-between">
+                <div class="header-left flex-center">
+                    <span class="live-indicator flex-center">
+                        <i class='bx bx-edit-alt'></i> DIAGRAM DRAWING BOARD
+                    </span>
+                    <span class="diagram-q-text">/ {{ currentQuestionText }}</span>
+                </div>
+                <button class="icon-btn close-btn" (click)="toggleDiagramTool(false)" title="Minimize Drawing Board">
+                    <i class='bx bx-x'></i>
+                </button>
+            </div>
+
+            <!-- Canvas Work Area -->
+            <div class="diagram-work-area">
+                <!-- Toolbar -->
+                <div class="diagram-toolbar">
+                    <div class="tool-section">
+                        <span class="tool-section-title">Tools</span>
+                        <button class="tool-btn" [class.active]="drawingMode === 'pencil'" (click)="setDrawingMode('pencil')" title="Freehand Draw">
+                            <i class='bx bx-pencil'></i>
+                        </button>
+                        <button class="tool-btn" [class.active]="drawingMode === 'line'" (click)="setDrawingMode('line')" title="Draw Line">
+                            <i class='bx bx-git-commit'></i>
+                        </button>
+                        <button class="tool-btn" [class.active]="drawingMode === 'rect'" (click)="setDrawingMode('rect')" title="Draw Rectangle">
+                            <i class='bx bx-rectangle'></i>
+                        </button>
+                        <button class="tool-btn" [class.active]="drawingMode === 'circle'" (click)="setDrawingMode('circle')" title="Draw Circle">
+                            <i class='bx bx-circle'></i>
+                        </button>
+                        <button class="tool-btn" [class.active]="drawingMode === 'text'" (click)="setDrawingMode('text')" title="Add Text Label">
+                            <i class='bx bx-text'></i>
+                        </button>
+                        <button class="tool-btn" [class.active]="drawingMode === 'eraser'" (click)="setDrawingMode('eraser')" title="Eraser">
+                            <i class='bx bx-eraser'></i>
+                        </button>
+                    </div>
+
+                    <div class="tool-divider"></div>
+
+                    <div class="tool-section">
+                        <span class="tool-section-title">Stroke Size</span>
+                        <div class="stroke-presets">
+                            <button class="stroke-btn" [class.active]="strokeWidth === 2" (click)="setStrokeWidth(2)">2px</button>
+                            <button class="stroke-btn" [class.active]="strokeWidth === 4" (click)="setStrokeWidth(4)">4px</button>
+                            <button class="stroke-btn" [class.active]="strokeWidth === 8" (click)="setStrokeWidth(8)">8px</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-divider"></div>
+
+                    <div class="tool-section">
+                        <span class="tool-section-title">Colors</span>
+                        <div class="color-palette">
+                            <button class="color-circle" *ngFor="let color of colors" 
+                                    [style.background-color]="color" 
+                                    [class.active]="strokeColor === color"
+                                    (click)="setStrokeColor(color)"></button>
+                        </div>
+                    </div>
+
+                    <div class="tool-divider"></div>
+
+                    <div class="tool-section actions-section">
+                        <span class="tool-section-title">Actions</span>
+                        <button class="tool-action-btn flex-center" (click)="undoLastDrawing()" [disabled]="undoStack.length === 0" title="Undo">
+                            <i class='bx bx-undo'></i> Undo
+                        </button>
+                        <button class="tool-action-btn flex-center btn-danger-text" (click)="clearDrawingCanvas()" title="Clear All">
+                            <i class='bx bx-trash'></i> Clear
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Canvas and Temporary Text Input Container -->
+                <div class="canvas-container" id="canvas-container-wrapper">
+                    <canvas id="diagram-canvas" 
+                            (mousedown)="onCanvasMouseDown($event)"
+                            (mousemove)="onCanvasMouseMove($event)"
+                            (mouseup)="onCanvasMouseUp($event)"
+                            (mouseleave)="onCanvasMouseUp($event)"
+                            (touchstart)="onCanvasMouseDown($event)"
+                            (touchmove)="onCanvasMouseMove($event)"
+                            (touchend)="onCanvasMouseUp($event)"></canvas>
+                    
+                    <!-- Floating text input for Text tool -->
+                    <input type="text" 
+                           id="diagram-text-input" 
+                           *ngIf="showTextInput" 
+                           [style.left.px]="textInputX" 
+                           [style.top.px]="textInputY"
+                           [style.color]="strokeColor"
+                           [(ngModel)]="textInputValue"
+                           (keydown.enter)="commitTextInput()"
+                           (blur)="commitTextInput()"
+                           placeholder="Type and press Enter..." />
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="diagram-footer flex-between">
+                <div class="footer-left flex-center">
+                    <span class="info-tip flex-center">
+                        <i class='bx bx-info-circle'></i> Draw your diagram here. Click the button below to submit your spoken answer along with the diagram.
+                    </span>
+                </div>
+                <div class="footer-right flex-center">
+                    <button class="btn-minimize flex-center" (click)="toggleDiagramTool(false)">
+                        <i class='bx bx-minus'></i> Hide Board
+                    </button>
+                    <button class="btn-submit-diagram flex-center" (click)="submitAnswerWithDiagram()">
+                        <i class='bx bx-cloud-upload'></i> Submit Answer with Diagram
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>

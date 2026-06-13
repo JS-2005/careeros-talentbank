@@ -50,7 +50,7 @@ def append_to_transcript(speaker: str, text: str):
     except Exception as e:
         print(f"Error appending to transcript.md: {e}")
 
-def append_to_walkthrough(question_text: str, category: str, difficulty: str, response: str):
+def append_to_walkthrough(question_text: str, category: str, difficulty: str, response: str, diagram_url: str = None):
     """Append question and candidate answer details to interview-walkthrough.md."""
     try:
         with open(WALKTHROUGH_PATH, "a", encoding="utf-8") as f:
@@ -58,12 +58,14 @@ def append_to_walkthrough(question_text: str, category: str, difficulty: str, re
             f.write(f"* **Category**: {category.capitalize()}\n")
             f.write(f"* **Difficulty**: {difficulty.capitalize()}\n\n")
             f.write(f"**User Response**:\n{response}\n\n")
+            if diagram_url:
+                f.write(f"**Candidate Diagram**:\n![Candidate Diagram]({diagram_url})\n\n")
             f.write("---\n\n")
     except Exception as e:
         print(f"Error appending to interview-walkthrough.md: {e}")
 
 async def get_interview_questions(user_interview_id: str):
-    """Load questions list from supabase for a user_interview_id."""
+    """Load questions list from supabase for a user_interview_id with transient error retry logic."""
     loop = asyncio.get_event_loop()
     
     def _fetch():
@@ -85,7 +87,14 @@ async def get_interview_questions(user_interview_id: str):
             
         return ai_interview.get("interview_question", [])
         
-    return await loop.run_in_executor(None, _fetch)
+    for attempt in range(3):
+        try:
+            return await loop.run_in_executor(None, _fetch)
+        except Exception as e:
+            if attempt == 2:
+                raise e
+            print(f"Fetch questions failed (attempt {attempt + 1}/3): {e}. Retrying in 1s...")
+            await asyncio.sleep(1)
 
 async def polish_user_response(raw_text: str) -> str:
     """Polishes raw transcribed user speech using Gemma-4-31B."""
@@ -125,7 +134,7 @@ async def generate_ai_reply(question_text: str, user_response: str) -> str:
         print(f"Error generating AI reply: {e}")
         return "Thank you for sharing that answer. Let's move on to the next question."
 
-async def process_user_answer(user_interview_id: str, raw_text: str, channel):
+async def process_user_answer(user_interview_id: str, raw_text: str, channel, diagram_url: str = None):
     """Processes user response, polishes it, updates files, calls LLM, and sends next question."""
     session = active_sessions.get(user_interview_id)
     if not session:
@@ -144,7 +153,9 @@ async def process_user_answer(user_interview_id: str, raw_text: str, channel):
     
     # 2. Append to transcript and walkthrough files
     append_to_transcript("Candidate", polished_text)
-    append_to_walkthrough(current_q["question_text"], current_q.get("type", "technical"), current_q.get("difficulty", "medium"), polished_text)
+    if diagram_url:
+        append_to_transcript("Candidate (Diagram)", f"![Diagram]({diagram_url})")
+    append_to_walkthrough(current_q["question_text"], current_q.get("type", "technical"), current_q.get("difficulty", "medium"), polished_text, diagram_url)
 
     # Send status to frontend
     channel.send(json.dumps({"type": "status", "message": "Formulating feedback..."}))
@@ -177,7 +188,8 @@ async def process_user_answer(user_interview_id: str, raw_text: str, channel):
             "next_index": next_idx,
             "transcript": updated_transcript,
             "walkthrough": updated_walkthrough,
-            "interview_completed": False
+            "interview_completed": False,
+            "diagram_tool": next_q.get("diagram_tool", False)
         }
         channel.send(json.dumps(response_payload))
     else:
@@ -318,7 +330,8 @@ async def handle_webrtc_offer(sdp: str, offer_type: str, user_interview_id: str)
                     asyncio.create_task(start_session(user_interview_id, channel))
                 elif msg_type == "user_response":
                     raw_text = data.get("text", "")
-                    asyncio.create_task(process_user_answer(user_interview_id, raw_text, channel))
+                    diagram_url = data.get("diagram_url", None)
+                    asyncio.create_task(process_user_answer(user_interview_id, raw_text, channel, diagram_url))
                     
             except Exception as e:
                 print(f"Error handling message on data channel: {e}")
@@ -365,25 +378,39 @@ async def start_session(user_interview_id: str, channel):
             channel.send(json.dumps({"type": "error", "message": "No questions found for this interview track."}))
             return
 
-        # Get track title and candidate full name from database
+        # Get track title and candidate full name from database with retries
         track_title = "General Practice Interview"
         user_name = "Candidate"
-        try:
+        loop = asyncio.get_event_loop()
+        
+        def _fetch_metadata():
             supabase = _get_supabase()
             res_ui = supabase.table("user_interview").select("interview_id, auth_id").eq("id", user_interview_id).single().execute()
-            if res_ui.data:
-                auth_id = res_ui.data.get("auth_id")
-                int_id = res_ui.data.get("interview_id")
+            if not res_ui.data:
+                return None
+            auth_id = res_ui.data.get("auth_id")
+            int_id = res_ui.data.get("interview_id")
+            
+            res_track = supabase.table("ai-interview").select("title").eq("id", int_id).single().execute()
+            track_title_val = res_track.data.get("title") if res_track.data else "General Practice Interview"
                 
-                res_track = supabase.table("ai-interview").select("title").eq("id", int_id).single().execute()
-                if res_track.data:
-                    track_title = res_track.data.get("title")
-                    
-                res_user = supabase.table("user_data").select("data").eq("user_id", auth_id).single().execute()
-                if res_user.data and "data" in res_user.data:
-                    user_name = res_user.data["data"].get("full_name", "Candidate")
-        except Exception as e:
-            print(f"Error fetching metadata for starting session: {e}")
+            res_user = supabase.table("user_data").select("data").eq("user_id", auth_id).single().execute()
+            user_name_val = "Candidate"
+            if res_user.data and "data" in res_user.data:
+                user_name_val = res_user.data["data"].get("full_name", "Candidate")
+            return track_title_val, user_name_val
+
+        for attempt in range(3):
+            try:
+                metadata = await loop.run_in_executor(None, _fetch_metadata)
+                if metadata:
+                    track_title, user_name = metadata
+                break
+            except Exception as e:
+                print(f"Fetch metadata failed (attempt {attempt + 1}/3): {e}. Retrying in 1s...")
+                if attempt == 2:
+                    print("Error fetching metadata for starting session, falling back to defaults")
+                await asyncio.sleep(1)
 
         # Initialize session state
         active_sessions[user_interview_id] = {
@@ -410,7 +437,8 @@ async def start_session(user_interview_id: str, channel):
             "question": first_q["question_text"],
             "index": 0,
             "transcript": updated_transcript,
-            "walkthrough": updated_walkthrough
+            "walkthrough": updated_walkthrough,
+            "diagram_tool": first_q.get("diagram_tool", False)
         }))
         
     except Exception as e:

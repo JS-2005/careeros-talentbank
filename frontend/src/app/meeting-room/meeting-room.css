@@ -617,3 +617,379 @@
     font-size: 11px;
   }
 }
+
+/* ==========================================================================
+   Diagram Drawing Board Premium Styles
+   ========================================================================== */
+
+/* Modal Overlay */
+.diagram-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Drawing Board Container */
+.diagram-board {
+  width: 90vw;
+  max-width: 1100px;
+  height: 85vh;
+  max-height: 760px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.diagram-header {
+  padding: 18px 24px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.diagram-header .live-indicator {
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.15);
+  color: var(--accent-primary);
+}
+
+.diagram-q-text {
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 12px;
+  border-left: 1px solid #e2e8f0;
+  padding-left: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 600px;
+}
+
+.diagram-header .close-btn {
+  background: transparent;
+  color: #64748b;
+  border: none;
+}
+
+.diagram-header .close-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Main Workspace */
+.diagram-work-area {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+/* Toolbar Panel */
+.diagram-toolbar {
+  width: 240px;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+/* Toolbar Buttons */
+.tool-btn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475569;
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+/* Row display of tools */
+.tool-section:first-of-type {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.tool-section:first-of-type .tool-section-title {
+  grid-column: span 2;
+}
+
+.tool-section:first-of-type .tool-btn {
+  justify-content: center;
+  padding: 12px;
+  font-size: 18px;
+}
+
+.tool-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.tool-btn.active {
+  background: var(--accent-light);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.tool-divider {
+  height: 1px;
+  background: #e2e8f0;
+}
+
+/* Stroke Size selector */
+.stroke-presets {
+  display: flex;
+  gap: 6px;
+}
+
+.stroke-btn {
+  flex: 1;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.stroke-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.stroke-btn.active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+/* Color Circles */
+.color-palette {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.color-circle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0;
+}
+
+.color-circle:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 2px #94a3b8;
+}
+
+.color-circle.active {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+/* Action buttons */
+.tool-action-btn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.tool-action-btn:hover:not([disabled]) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.tool-action-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tool-action-btn.btn-danger-text:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* Canvas Work Area container */
+.canvas-container {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow: auto;
+}
+
+/* The Canvas itself */
+#diagram-canvas {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* Floating Input Box for Text Tool */
+#diagram-text-input {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
+  padding: 4px 8px;
+  font-family: var(--font-family-sans);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  z-index: 10;
+  width: 180px;
+  transition: border-color 0.2s;
+}
+
+/* Footer Section */
+.diagram-footer {
+  padding: 16px 24px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.info-tip {
+  font-size: 12px;
+  color: #64748b;
+  gap: 6px;
+}
+
+.info-tip i {
+  font-size: 15px;
+  color: var(--accent-primary);
+}
+
+.btn-minimize {
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  gap: 6px;
+  margin-right: 12px;
+  transition: all 0.2s ease;
+}
+
+.btn-minimize:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.btn-submit-diagram {
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+  transition: all 0.2s ease;
+}
+
+.btn-submit-diagram:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Image formatting inside Transcript / Walkthrough Panels */
+.md-image-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 16px 0;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  max-width: 100%;
+}
+
+.md-image {
+  max-width: 100%;
+  max-height: 250px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+/* Animation utilities */
+.animate-zoom-in {
+  animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+

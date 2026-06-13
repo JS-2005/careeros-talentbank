@@ -322,6 +322,12 @@
   padding: 24px;
 }
 
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .user-info h4 {
   font-family: var(--font-family-display);
   font-size: 15px;

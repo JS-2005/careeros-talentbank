@@ -33,8 +33,9 @@ export class MeetingRoom implements OnInit, OnDestroy {
   private recognition: any = null;
   isRecording = false;
   currentResponseText = '';
+  accumulatedTranscript = '';
+  shouldBeRecording = false;
   aiSpeechPlaying = false;
-  private silenceTimeout: any = null;
 
   // Local media stream
   isVideoOn = true;
@@ -54,6 +55,30 @@ export class MeetingRoom implements OnInit, OnDestroy {
   totalQuestions = 3;
   isWaitingForAi = false;
   interviewCompleted = false;
+
+  // Diagram Drawing Board State
+  showDiagramTool = false;
+  drawingMode: 'pencil' | 'line' | 'rect' | 'circle' | 'text' | 'eraser' = 'pencil';
+  strokeColor = '#3b82f6';
+  strokeWidth = 3;
+  colors: string[] = ['#3b82f6', '#8b5cf6', '#06b6d4', '#ec4899', '#ffffff', '#1f2937'];
+  undoStack: ImageData[] = [];
+  hasDrawing = false;
+
+  // Text Tool Specifics
+  showTextInput = false;
+  textInputX = 0;
+  textInputY = 0;
+  textInputValue = '';
+  private textStartX = 0;
+  private textStartY = 0;
+
+  // Drawing mouse track
+  private isDrawing = false;
+  private startX = 0;
+  private startY = 0;
+  private canvasElement: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
 
   constructor() {
     // Warm up the speech synthesis voices
@@ -262,6 +287,11 @@ export class MeetingRoom implements OnInit, OnDestroy {
           this.transcriptMarkdown = data.transcript || '';
           this.walkthroughMarkdown = data.walkthrough || '';
           this.statusMessage = 'Speaking question...';
+          
+          // Handle diagram tool auto popup
+          const isDiag = data.diagram_tool || false;
+          this.toggleDiagramTool(isDiag);
+
           this.cdr.detectChanges();
 
           // Read introduction and the first question
@@ -279,12 +309,19 @@ export class MeetingRoom implements OnInit, OnDestroy {
             if (data.next_question) {
               this.currentQuestionText = data.next_question;
               this.currentQuestionIndex = data.next_index;
+              
+              // Handle diagram tool auto popup
+              const isDiag = data.diagram_tool || false;
+              this.toggleDiagramTool(isDiag);
+
               this.speakText(`Let's move to the next question. ${data.next_question}`, () => {
                 this.startRecording();
               });
             } else {
               this.interviewCompleted = true;
               this.currentQuestionText = 'Interview completed. Generating report...';
+              // Hide diagram tool if still open
+              this.toggleDiagramTool(false);
               this.speakText('This concludes our interview. Thank you for your time.', () => {
                 this.statusMessage = 'Generating report...';
               });
@@ -378,69 +415,85 @@ export class MeetingRoom implements OnInit, OnDestroy {
   startRecording() {
     if (this.isRecording) return;
     
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      this.statusMessage = 'Speech recognition not supported in this browser.';
-      this.cdr.detectChanges();
-      return;
+    this.shouldBeRecording = true;
+    
+    if (!this.recognition) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        this.statusMessage = 'Speech recognition not supported in this browser.';
+        this.cdr.detectChanges();
+        return;
+      }
+
+      this.recognition = new SpeechRecognition();
+      this.recognition.continuous = true;
+      this.recognition.interimResults = true;
+      this.recognition.lang = 'en-US';
+
+      this.recognition.onstart = () => {
+        this.isRecording = true;
+        this.statusMessage = 'Listening... Please speak your answer.';
+        this.cdr.detectChanges();
+      };
+
+      this.recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = 0; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        const currentSessionText = finalTranscript || interimTranscript;
+        this.currentResponseText = (this.accumulatedTranscript + ' ' + currentSessionText).trim();
+        this.cdr.detectChanges();
+      };
+
+      this.recognition.onerror = (event: any) => {
+        console.error('SpeechRecognition error:', event.error);
+        if (event.error === 'no-speech') {
+          this.statusMessage = 'No speech detected. Please speak louder.';
+          this.cdr.detectChanges();
+        }
+      };
+
+      this.recognition.onend = () => {
+        if (this.shouldBeRecording && this.isMicOn) {
+          console.log('Speech recognition ended. Restarting...');
+          this.accumulatedTranscript = this.currentResponseText;
+          
+          setTimeout(() => {
+            try {
+              if (this.shouldBeRecording && this.isMicOn) {
+                this.recognition.start();
+              }
+            } catch (err) {
+              console.error('Failed to restart speech recognition:', err);
+            }
+          }, 100);
+        } else {
+          this.isRecording = false;
+          this.cdr.detectChanges();
+        }
+      };
     }
 
-    this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
-    this.recognition.lang = 'en-US';
-
-    this.recognition.onstart = () => {
-      this.isRecording = true;
-      this.statusMessage = 'Listening... Please speak your answer.';
+    if (this.isMicOn) {
+      try {
+        this.recognition.start();
+      } catch (err) {}
+    } else {
+      this.statusMessage = 'Mic is muted. Unmute to speak your answer.';
       this.cdr.detectChanges();
-    };
-
-    this.recognition.onresult = (event: any) => {
-      if (this.silenceTimeout) {
-        clearTimeout(this.silenceTimeout);
-      }
-
-      let interimTranscript = '';
-      let finalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
-        }
-      }
-
-      this.currentResponseText = finalTranscript || interimTranscript;
-      this.cdr.detectChanges();
-
-      // Automatically submit the answer when user finishes speaking (2.5 seconds of silence)
-      if (this.currentResponseText.trim().length > 0) {
-        this.silenceTimeout = setTimeout(() => {
-          console.log('Silence detected, auto-submitting answer...');
-          this.submitAnswer();
-        }, 2500);
-      }
-    };
-
-    this.recognition.onerror = (event: any) => {
-      console.error('SpeechRecognition error:', event.error);
-      if (event.error === 'no-speech') {
-        this.statusMessage = 'No speech detected. Please speak louder.';
-        this.cdr.detectChanges();
-      }
-    };
-
-    this.recognition.onend = () => {
-      this.isRecording = false;
-      this.cdr.detectChanges();
-    };
-
-    this.recognition.start();
+    }
   }
 
   stopRecording() {
+    this.shouldBeRecording = false;
     if (this.recognition && this.isRecording) {
       this.recognition.stop();
       this.isRecording = false;
@@ -450,10 +503,6 @@ export class MeetingRoom implements OnInit, OnDestroy {
 
   submitAnswer() {
     this.stopRecording();
-    if (this.silenceTimeout) {
-      clearTimeout(this.silenceTimeout);
-      this.silenceTimeout = null;
-    }
     
     if (!this.currentResponseText.trim()) {
       return;
@@ -474,6 +523,7 @@ export class MeetingRoom implements OnInit, OnDestroy {
       }));
 
       this.currentResponseText = '';
+      this.accumulatedTranscript = '';
       this.cdr.detectChanges();
     } else {
       alert('WebRTC session is disconnected. Try refreshing.');
@@ -499,6 +549,16 @@ export class MeetingRoom implements OnInit, OnDestroy {
         const newTrackState = !audioTracks[0].enabled;
         audioTracks.forEach(track => track.enabled = newTrackState);
         this.isMicOn = newTrackState;
+        
+        if (!newTrackState) {
+          if (this.recognition && this.isRecording) {
+            this.recognition.stop();
+          }
+        } else {
+          if (this.shouldBeRecording && !this.isRecording) {
+            this.startRecording();
+          }
+        }
       }
     }
     this.cdr.detectChanges();
@@ -507,8 +567,11 @@ export class MeetingRoom implements OnInit, OnDestroy {
   formatMarkdown(text: string): string {
     if (!text) return '';
     
+    // Format image tags first
+    let formattedText = text.replace(/!\[(.*?)\]\((.*?)\)/g, '<div class="md-image-container"><img class="md-image" src="$2" alt="$1"></div>');
+    
     // Convert markdown into simple HTML safely
-    let html = text
+    let html = formattedText
       .replace(/^# (.*$)/gim, '<h1 class="md-h1">$1</h1>')
       .replace(/^## (.*$)/gim, '<h2 class="md-h2">$1</h2>')
       .replace(/^### (.*$)/gim, '<h3 class="md-h3">$1</h3>')
@@ -531,6 +594,10 @@ export class MeetingRoom implements OnInit, OnDestroy {
   }
 
   cleanup() {
+    this.showDiagramTool = false;
+    this.shouldBeRecording = false;
+    this.accumulatedTranscript = '';
+
     // Stop local media tracks
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop());
@@ -544,10 +611,6 @@ export class MeetingRoom implements OnInit, OnDestroy {
 
     // Close speech recognition
     this.stopRecording();
-    if (this.silenceTimeout) {
-      clearTimeout(this.silenceTimeout);
-      this.silenceTimeout = null;
-    }
 
     // Close WebRTC connection
     if (this.dataChannel) {
@@ -557,6 +620,359 @@ export class MeetingRoom implements OnInit, OnDestroy {
     if (this.pc) {
       this.pc.close();
       this.pc = null;
+    }
+  }
+
+  // Diagram Board Interactions and Canvas Helpers
+  toggleDiagramTool(show: boolean) {
+    this.showDiagramTool = show;
+    this.cdr.detectChanges();
+    if (show) {
+      setTimeout(() => {
+        this.initCanvas();
+      }, 200);
+    }
+  }
+
+  initCanvas() {
+    this.canvasElement = document.getElementById('diagram-canvas') as HTMLCanvasElement;
+    if (!this.canvasElement) {
+      console.warn('Canvas element not found!');
+      return;
+    }
+    this.ctx = this.canvasElement.getContext('2d');
+    if (!this.ctx) {
+      console.warn('Could not get 2D context');
+      return;
+    }
+
+    const container = document.getElementById('canvas-container-wrapper');
+    const containerWidth = container ? container.clientWidth - 40 : 800;
+    const containerHeight = container ? container.clientHeight - 40 : 500;
+    
+    this.canvasElement.width = Math.max(containerWidth, 750);
+    this.canvasElement.height = Math.max(containerHeight, 480);
+
+    this.clearCanvasAndDrawGrid();
+    
+    this.undoStack = [];
+    this.hasDrawing = false;
+    this.isDrawing = false;
+    this.showTextInput = false;
+    
+    this.saveCanvasState();
+    this.cdr.detectChanges();
+  }
+
+  clearCanvasAndDrawGrid() {
+    if (!this.ctx || !this.canvasElement) return;
+    const w = this.canvasElement.width;
+    const h = this.canvasElement.height;
+
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.fillRect(0, 0, w, h);
+
+    this.ctx.strokeStyle = '#f1f5f9';
+    this.ctx.lineWidth = 1;
+    const gridSpacing = 20;
+
+    for (let x = 0; x < w; x += gridSpacing) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, 0);
+      this.ctx.lineTo(x, h);
+      this.ctx.stroke();
+    }
+    for (let y = 0; y < h; y += gridSpacing) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, y);
+      this.ctx.lineTo(w, y);
+      this.ctx.stroke();
+    }
+  }
+
+  saveCanvasState() {
+    if (!this.ctx || !this.canvasElement) return;
+    if (this.undoStack.length >= 20) {
+      this.undoStack.shift();
+    }
+    this.undoStack.push(this.ctx.getImageData(0, 0, this.canvasElement.width, this.canvasElement.height));
+  }
+
+  getEventCoords(e: any): { x: number, y: number } {
+    if (!this.canvasElement) return { x: 0, y: 0 };
+    const rect = this.canvasElement.getBoundingClientRect();
+    
+    let clientX = 0;
+    let clientY = 0;
+    
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  }
+
+  onCanvasMouseDown(e: any) {
+    if (e.cancelable) e.preventDefault();
+    if (!this.ctx || !this.canvasElement) return;
+
+    if (this.showTextInput) {
+      this.commitTextInput();
+      return;
+    }
+
+    const coords = this.getEventCoords(e);
+    this.startX = coords.x;
+    this.startY = coords.y;
+
+    if (this.drawingMode === 'text') {
+      this.textStartX = coords.x;
+      this.textStartY = coords.y;
+      
+      const containerRect = document.getElementById('canvas-container-wrapper')?.getBoundingClientRect();
+      const canvasRect = this.canvasElement.getBoundingClientRect();
+      
+      this.textInputX = canvasRect.left - (containerRect?.left || 0) + coords.x;
+      this.textInputY = canvasRect.top - (containerRect?.top || 0) + coords.y - 12;
+      
+      this.textInputValue = '';
+      this.showTextInput = true;
+      this.cdr.detectChanges();
+      
+      setTimeout(() => {
+        const input = document.getElementById('diagram-text-input') as HTMLInputElement;
+        if (input) input.focus();
+      }, 50);
+      return;
+    }
+
+    this.isDrawing = true;
+    this.saveCanvasState();
+    
+    this.ctx.strokeStyle = this.strokeColor;
+    this.ctx.lineWidth = this.strokeWidth;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+
+    if (this.drawingMode === 'pencil') {
+      this.ctx.beginPath();
+      this.ctx.moveTo(coords.x, coords.y);
+    } else if (this.drawingMode === 'eraser') {
+      this.ctx.save();
+      this.ctx.strokeStyle = '#ffffff';
+      this.ctx.lineWidth = this.strokeWidth * 4;
+      this.ctx.beginPath();
+      this.ctx.moveTo(coords.x, coords.y);
+    }
+  }
+
+  onCanvasMouseMove(e: any) {
+    if (!this.isDrawing || !this.ctx || !this.canvasElement) return;
+    if (e.cancelable) e.preventDefault();
+
+    const coords = this.getEventCoords(e);
+
+    if (this.drawingMode === 'pencil' || this.drawingMode === 'eraser') {
+      this.ctx.lineTo(coords.x, coords.y);
+      this.ctx.stroke();
+      this.hasDrawing = true;
+    } else {
+      this.restoreLastSavedState();
+      
+      this.ctx.strokeStyle = this.strokeColor;
+      this.ctx.lineWidth = this.strokeWidth;
+      this.ctx.lineCap = 'round';
+      
+      if (this.drawingMode === 'line') {
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.startX, this.startY);
+        this.ctx.lineTo(coords.x, coords.y);
+        this.ctx.stroke();
+        this.hasDrawing = true;
+      } else if (this.drawingMode === 'rect') {
+        const w = coords.x - this.startX;
+        const h = coords.y - this.startY;
+        this.ctx.beginPath();
+        this.ctx.rect(this.startX, this.startY, w, h);
+        this.ctx.stroke();
+        this.hasDrawing = true;
+      } else if (this.drawingMode === 'circle') {
+        const dx = coords.x - this.startX;
+        const dy = coords.y - this.startY;
+        const radius = Math.sqrt(dx * dx + dy * dy);
+        this.ctx.beginPath();
+        this.ctx.arc(this.startX, this.startY, radius, 0, 2 * Math.PI);
+        this.ctx.stroke();
+        this.hasDrawing = true;
+      }
+    }
+  }
+
+  onCanvasMouseUp(e: any) {
+    if (!this.isDrawing) return;
+    this.isDrawing = false;
+    
+    if (this.drawingMode === 'eraser' && this.ctx) {
+      this.ctx.restore();
+    }
+    
+    this.saveCanvasState();
+    this.cdr.detectChanges();
+  }
+
+  restoreLastSavedState() {
+    if (!this.ctx || !this.canvasElement || this.undoStack.length === 0) return;
+    const lastState = this.undoStack[this.undoStack.length - 1];
+    this.ctx.putImageData(lastState, 0, 0);
+  }
+
+  undoLastDrawing() {
+    if (!this.ctx || !this.canvasElement || this.undoStack.length <= 1) {
+      this.clearCanvasAndDrawGrid();
+      this.undoStack = [];
+      this.saveCanvasState();
+      this.hasDrawing = false;
+      this.cdr.detectChanges();
+      return;
+    }
+    this.undoStack.pop();
+    const previousState = this.undoStack[this.undoStack.length - 1];
+    this.ctx.putImageData(previousState, 0, 0);
+    this.cdr.detectChanges();
+  }
+
+  clearDrawingCanvas() {
+    if (confirm('Are you sure you want to clear the entire canvas?')) {
+      this.clearCanvasAndDrawGrid();
+      this.undoStack = [];
+      this.saveCanvasState();
+      this.hasDrawing = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  setDrawingMode(mode: 'pencil' | 'line' | 'rect' | 'circle' | 'text' | 'eraser') {
+    this.drawingMode = mode;
+    this.showTextInput = false;
+    this.cdr.detectChanges();
+  }
+
+  setStrokeColor(color: string) {
+    this.strokeColor = color;
+    this.cdr.detectChanges();
+  }
+
+  setStrokeWidth(width: number) {
+    this.strokeWidth = width;
+    this.cdr.detectChanges();
+  }
+
+  commitTextInput() {
+    if (!this.showTextInput) return;
+    this.showTextInput = false;
+
+    if (this.textInputValue.trim() && this.ctx) {
+      this.saveCanvasState();
+      
+      this.ctx.fillStyle = this.strokeColor;
+      this.ctx.font = 'bold 16px sans-serif';
+      this.ctx.textBaseline = 'top';
+      this.ctx.fillText(this.textInputValue, this.textStartX, this.textStartY);
+      
+      this.hasDrawing = true;
+      this.saveCanvasState();
+    }
+    
+    this.textInputValue = '';
+    this.cdr.detectChanges();
+  }
+
+  async uploadDiagram(): Promise<string | null> {
+    if (!this.canvasElement || !this.hasDrawing) return null;
+    
+    try {
+      const blob = await new Promise<Blob | null>((resolve) => {
+        this.canvasElement?.toBlob((b) => resolve(b), 'image/png');
+      });
+      
+      if (!blob) throw new Error('Blob creation failed');
+      
+      const fileId = `${Math.random().toString(36).substring(2)}-${Date.now()}.png`;
+      const path = `diagrams/${this.userInterviewId}/${fileId}`;
+      
+      const { data, error } = await this.authService.supabaseClient.storage
+        .from('ai-interview')
+        .upload(path, blob, {
+          contentType: 'image/png',
+          upsert: true
+        });
+        
+      if (error) throw error;
+      
+      const { data: publicUrlData } = this.authService.supabaseClient.storage
+        .from('ai-interview')
+        .getPublicUrl(path);
+        
+      return publicUrlData.publicUrl;
+    } catch (e) {
+      console.error('Error uploading diagram to storage:', e);
+      return null;
+    }
+  }
+
+  async submitAnswerWithDiagram() {
+    this.stopRecording();
+    
+    if (!this.hasDrawing) {
+      alert('Please draw something on the board first, or click Close to skip.');
+      return;
+    }
+
+    this.isWaitingForAi = true;
+    this.statusMessage = 'Uploading your diagram...';
+    this.cdr.detectChanges();
+
+    const diagramUrl = await this.uploadDiagram();
+    
+    if (!diagramUrl) {
+      alert('Failed to upload diagram. Please try again.');
+      this.isWaitingForAi = false;
+      this.statusMessage = 'Listening... Please speak your answer.';
+      this.cdr.detectChanges();
+      return;
+    }
+
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+
+      this.isWaitingForAi = true;
+      this.statusMessage = 'AI is polishing your response and evaluating...';
+      
+      const responseText = this.currentResponseText.trim() || 'See attached diagram for my design solution.';
+      
+      this.dataChannel.send(JSON.stringify({
+        type: 'user_response',
+        text: responseText,
+        diagram_url: diagramUrl
+      }));
+
+      this.showDiagramTool = false;
+      this.currentResponseText = '';
+      this.accumulatedTranscript = '';
+      this.cdr.detectChanges();
+    } else {
+      alert('WebRTC session is disconnected. Try refreshing.');
+      this.isWaitingForAi = false;
+      this.cdr.detectChanges();
     }
   }
 
