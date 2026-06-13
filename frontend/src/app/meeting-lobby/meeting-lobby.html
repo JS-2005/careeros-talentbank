@@ -1,1 +1,132 @@
-<p>meeting-lobby works!</p>
+<div class="lobby-wrapper">
+    <!-- Header -->
+    <header class="lobby-header flex-between">
+        <div class="header-left">
+            <button class="back-link flex-center" (click)="goBackToHub()">
+                <i class='bx bx-left-arrow-alt'></i> Back to Hub
+            </button>
+            <h2 class="header-title">Practice Lobby</h2>
+        </div>
+        <div class="header-right flex-between">
+            <div class="user-info flex-center">
+                <span class="user-name">{{ userName }}</span>
+                <div class="user-avatar">
+                    <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="User Avatar" />
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    @if (isLoading) {
+        <div class="loader-container flex-center">
+            <div class="spinner"></div>
+            <p>Preparing your interview lab...</p>
+        </div>
+    } @else {
+        <main class="lobby-container">
+            <div class="lobby-grid">
+                
+                <!-- Left Side: Camera Preview -->
+                <div class="preview-section">
+                    <div class="card preview-card">
+                        <div class="video-container">
+                            <video id="lobby-video-preview" autoplay playsinline muted [class.hidden]="!isVideoOn"></video>
+                            
+                            <!-- Fallback Camera Placeholder -->
+                            @if (!isVideoOn) {
+                                <div class="camera-placeholder flex-center">
+                                    <div class="avatar-fallback flex-center">
+                                        <i class='bx bx-video-off'></i>
+                                    </div>
+                                    <p>Camera is off</p>
+                                </div>
+                            }
+                            
+                            <!-- Mic Mute Indicator Overlay -->
+                            @if (!isMicOn) {
+                                <div class="mic-muted-badge flex-center">
+                                    <i class='bx bx-microphone-off'></i> Mic Muted
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Controls -->
+                        <div class="preview-controls flex-center">
+                            <button class="control-btn" [class.btn-danger]="!isMicOn" (click)="toggleMic()" title="Toggle Microphone">
+                                <i [class]="isMicOn ? 'bx bx-microphone' : 'bx bx-microphone-off'"></i>
+                            </button>
+                            <button class="control-btn" [class.btn-danger]="!isVideoOn" (click)="toggleCamera()" title="Toggle Camera">
+                                <i [class]="isVideoOn ? 'bx bx-video' : 'bx bx-video-off'"></i>
+                            </button>
+                        </div>
+
+                        @if (cameraError) {
+                            <div class="camera-warning">
+                                <i class='bx bx-error-circle'></i> {{ cameraError }}
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Right Side: Details & Preparation -->
+                <div class="details-section">
+                    <div class="card info-card">
+                        <div class="badge-pill">
+                            <i class='bx bx-shield-quarter'></i> SECURE SIMULATION
+                        </div>
+                        
+                        @if (interviewTrack) {
+                            <h3 class="track-title">{{ interviewTrack.title }}</h3>
+                            <p class="track-desc">{{ interviewTrack.description }}</p>
+                        } @else {
+                            <h3 class="track-title">General Interview Practice</h3>
+                            <p class="track-desc">Domain-expert AI simulation designed to test your core industry competency.</p>
+                        }
+
+                        <!-- Session expectations -->
+                        <div class="section-divider"></div>
+                        <h4 class="section-title">Session Setup Checklist</h4>
+                        
+                        <ul class="checklist">
+                            <li class="checklist-item">
+                                <i class="bx bx-check-circle checked-icon"></i>
+                                <div>
+                                    <h5>Check your lighting</h5>
+                                    <p>Ensure your face is well-lit and clearly visible to the camera.</p>
+                                </div>
+                            </li>
+                            <li class="checklist-item">
+                                <i class="bx bx-check-circle checked-icon"></i>
+                                <div>
+                                    <h5>Find a quiet room</h5>
+                                    <p>Minimize background noise so the AI can accurately transcribe your answers.</p>
+                                </div>
+                            </li>
+                            <li class="checklist-item">
+                                <i class="bx bx-check-circle checked-icon"></i>
+                                <div>
+                                    <h5>Stable connection</h5>
+                                    <p>A stable internet connection ensures real-time evaluations without delay.</p>
+                                </div>
+                            </li>
+                        </ul>
+
+                        <div class="section-divider"></div>
+
+                        <!-- Actions -->
+                        <div class="action-buttons">
+                            <button class="btn-black btn-primary w-100" (click)="enterMeetingRoom()">
+                                Enter Interview Room <i class='bx bx-right-arrow-alt'></i>
+                            </button>
+                            <button class="btn-secondary w-100" (click)="goBackToHub()">
+                                Return to Dashboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    }
+</div>

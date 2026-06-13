@@ -1,0 +1,240 @@
+/* Report Page Layout */
+.report-wrapper {
+  min-height: 100vh;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header styling */
+.report-header {
+  height: 72px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 40px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.back-link {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  gap: 6px;
+  transition: color 0.2s ease;
+}
+
+.back-link:hover {
+  color: var(--accent-primary);
+}
+
+.header-title {
+  font-family: var(--font-family-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-left: 1px solid var(--border);
+  padding-left: 20px;
+  margin-left: 20px;
+}
+
+.track-title {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-right: 12px;
+}
+
+.user-avatar img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Main Content Area */
+.report-container {
+  padding: 40px;
+  max-width: 1000px;
+  width: 100%;
+  margin: 0 auto;
+  flex: 1;
+}
+
+.report-card {
+  padding: 50px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+.report-header-accent {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 24px;
+  margin-bottom: 40px;
+}
+
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.date-stamp {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+/* Loader Styles */
+.loader-container {
+  flex: 1;
+  flex-direction: column;
+  gap: 20px;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Markdown Rendering Engine Classes - Custom Report Theme */
+.report-content {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.report-h1 {
+  font-family: var(--font-family-display);
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.report-h2 {
+  font-family: var(--font-family-display);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 36px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.report-h3 {
+  font-family: var(--font-family-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 24px;
+  margin-bottom: 10px;
+}
+
+.report-li {
+  margin-left: 24px;
+  margin-bottom: 8px;
+  list-style-type: disc;
+  color: var(--text-secondary);
+}
+
+.report-strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.report-em {
+  color: var(--accent-primary);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.report-code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--danger);
+  border: 1px solid var(--border);
+}
+
+.report-hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+/* Action Footer */
+.report-action-footer {
+  margin-top: 50px;
+  padding-top: 30px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  box-shadow: var(--shadow-glow);
+  padding: 12px 32px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .report-header {
+    padding: 0 20px;
+  }
+  
+  .header-title {
+    font-size: 16px;
+    margin-left: 12px;
+    padding-left: 12px;
+  }
+  
+  .report-container {
+    padding: 20px 10px;
+  }
+  
+  .report-card {
+    padding: 30px 20px;
+  }
+}

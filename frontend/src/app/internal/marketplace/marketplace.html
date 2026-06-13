@@ -46,7 +46,11 @@
       <div class="card job-card highlight-border">
         <div class="job-header flex-between">
           <div class="company-info">
-            <div class="company-logo bg-dark text-white flex-center">{{item.companyLogo}}</div>
+            <div class="avatar-small">
+              <img
+                [src]="item.user === 'Alex Rivers' ? (googleAvatarUrl || 'https://ui-avatars.com/api/?name=Alex+Rivers') : ('https://ui-avatars.com/api/?name=' + item.user)"
+                alt="User Avatar" class="avatar-small-img" />
+            </div>
             <div>
               <h4>{{item.company}}</h4>
               <p class="meta">Posted {{item.postedTime}} • Recruitment</p>
@@ -95,7 +99,7 @@
             </div>
             <div>
               <h4>{{item.user}}</h4>
-              <p class="meta">{{item.userRole}}</p>
+              <p class="meta">Posted {{item.postedTime}} • {{item.userRole}}</p>
             </div>
           </div>
         </div>
@@ -131,8 +135,9 @@
         <div class="event-card-header flex-between">
           <div class="organizer-info">
             <div class="avatar-small">
-              <img [src]="'https://ui-avatars.com/api/?name=' + item.user" alt="Organizer Avatar"
-                class="avatar-small-img" />
+              <img
+                [src]="item.user === 'Alex Rivers' ? (googleAvatarUrl || 'https://ui-avatars.com/api/?name=Alex+Rivers') : ('https://ui-avatars.com/api/?name=' + item.user)"
+                alt="User Avatar" class="avatar-small-img" />
             </div>
             <div>
               <h4>{{item.user}}</h4>

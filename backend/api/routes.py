@@ -242,3 +242,43 @@ async def get_saved_jobs(supabase: Client = Depends(get_supabase_client)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving saved jobs: {str(e)}")
+
+class WebRTCOfferRequest(BaseModel):
+    sdp: str
+    type: str
+    user_interview_id: str
+
+from services.webrtc_service import handle_webrtc_offer, reset_interview_files, read_file_content, TRANSCRIPT_PATH, WALKTHROUGH_PATH
+
+@router.post("/webrtc/offer")
+async def webrtc_offer(payload: WebRTCOfferRequest):
+    try:
+        answer = await handle_webrtc_offer(
+            sdp=payload.sdp,
+            offer_type=payload.type,
+            user_interview_id=payload.user_interview_id
+        )
+        return answer
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"WebRTC signaling failed: {str(e)}")
+
+@router.get("/meeting-room/files")
+async def get_meeting_files():
+    try:
+        transcript = read_file_content(TRANSCRIPT_PATH)
+        walkthrough = read_file_content(WALKTHROUGH_PATH)
+        return {
+            "transcript": transcript,
+            "walkthrough": walkthrough
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read meeting files: {str(e)}")
+
+@router.post("/meeting-room/reset")
+async def reset_meeting_files():
+    try:
+        reset_interview_files()
+        return {"status": "success", "message": "Files reset successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset meeting files: {str(e)}")
+

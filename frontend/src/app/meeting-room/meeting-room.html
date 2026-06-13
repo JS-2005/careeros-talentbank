@@ -1,1 +1,123 @@
-<p>meeting-room works!</p>
+<div class="meeting-room-wrapper">
+    <!-- Header -->
+    <header class="room-header flex-between">
+        <div class="header-left flex-center">
+            <span class="live-indicator flex-center">
+                <span class="pulse-dot"></span> LIVE INTERVIEW
+            </span>
+            <span class="room-title" *ngIf="interviewTrack">/ {{ interviewTrack.title }}</span>
+        </div>
+        <div class="header-right flex-between">
+            <div class="webrtc-badge flex-center" [ngClass]="webrtcStatus">
+                <i class='bx bx-radio-circle-marked'></i> {{ statusMessage }}
+            </div>
+            <div class="user-info flex-center">
+                <span class="user-name">{{ userName }}</span>
+                <div class="user-avatar">
+                    <img [src]="googleAvatarUrl || 'https://ui-avatars.com/api/?name=User'" alt="User Avatar" />
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Room Grid -->
+    <div class="room-main-grid">
+        <!-- Left Side: Interview Simulator -->
+        <section class="simulation-panel">
+            <!-- Video & AI Status Row -->
+            <div class="avatar-video-grid">
+                <!-- AI Interviewer Avatar & Waves -->
+                <div class="card glass-card ai-interviewer-card flex-center">
+                    <div class="ai-avatar-container">
+                        <div class="pulse-ring" [ngClass]="{'speaking': aiSpeechPlaying, 'thinking': isWaitingForAi, 'listening': isRecording}"></div>
+                        <div class="ai-avatar flex-center">
+                            <i class='bx bx-bot'></i>
+                        </div>
+                    </div>
+                    <div class="ai-status-text">
+                        <h4 *ngIf="aiSpeechPlaying" class="pulse-text">AI is Speaking...</h4>
+                        <h4 *ngIf="isWaitingForAi && !aiSpeechPlaying" class="pulse-text-purple">AI is polishing & evaluating...</h4>
+                        <h4 *ngIf="isRecording" class="pulse-text-green">AI is Listening...</h4>
+                        <h4 *ngIf="!aiSpeechPlaying && !isWaitingForAi && !isRecording" class="text-muted">AI is Ready</h4>
+                        <p class="status-msg">{{ statusMessage }}</p>
+                    </div>
+                </div>
+
+                <!-- Candidate Video Preview -->
+                <div class="card glass-card candidate-video-card">
+                    <div class="video-preview-container">
+                        <video id="meeting-video-preview" autoplay playsinline muted [class.hidden]="!isVideoOn"></video>
+                        <div class="camera-placeholder flex-center" *ngIf="!isVideoOn">
+                            <i class='bx bx-video-off'></i>
+                            <p>Camera is disabled</p>
+                        </div>
+                        <!-- Video Controls Overlay -->
+                        <div class="video-overlay-controls flex-center">
+                            <button class="icon-btn" [class.btn-danger]="!isMicOn" (click)="toggleMic()" title="Toggle Microphone">
+                                <i [class]="isMicOn ? 'bx bx-microphone' : 'bx bx-microphone-off'"></i>
+                            </button>
+                            <button class="icon-btn" [class.btn-danger]="!isVideoOn" (click)="toggleCamera()" title="Toggle Camera">
+                                <i [class]="isVideoOn ? 'bx bx-video' : 'bx bx-video-off'"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Question Card -->
+            <div class="card glass-card question-card">
+                <div class="question-header flex-between">
+                    <span class="question-num-badge">Question {{ currentQuestionIndex + 1 }} of {{ totalQuestions }}</span>
+                    <div class="track-metadata flex-center" *ngIf="interviewTrack">
+                        <span class="difficulty-tag" [ngClass]="interviewTrack.interview_question[currentQuestionIndex]?.difficulty || 'medium'">
+                            {{ interviewTrack.interview_question[currentQuestionIndex]?.difficulty || 'Medium' }}
+                        </span>
+                        <span class="type-tag">{{ interviewTrack.interview_question[currentQuestionIndex]?.type || 'Technical' }}</span>
+                    </div>
+                </div>
+                <div class="question-body">
+                    <p class="question-text">{{ currentQuestionText }}</p>
+                </div>
+            </div>
+
+            <!-- Live Voice Captions Overlay -->
+            <div class="card glass-card subtitles-card flex-center" *ngIf="isRecording && currentResponseText">
+                <span class="recording-badge flex-center">
+                    <span class="live-dot"></span> SPEAKING
+                </span>
+                <p class="subtitles-text">" {{ currentResponseText }} "</p>
+            </div>
+        </section>
+
+        <!-- Right Side: Side Panel for Logs & Analysis -->
+        <section class="side-panel">
+            <div class="card glass-card panel-card">
+                <!-- Tabs -->
+                <div class="panel-tabs">
+                    <button class="tab-btn" [class.active]="activeTab === 'transcript'" (click)="activeTab = 'transcript'">
+                        <i class='bx bx-chat'></i> Transcript
+                    </button>
+                    <button class="tab-btn" [class.active]="activeTab === 'walkthrough'" (click)="activeTab = 'walkthrough'">
+                        <i class='bx bx-list-check'></i> Walkthrough
+                    </button>
+                </div>
+
+                <!-- Tab Contents -->
+                <div class="panel-content scrollable-panel">
+                    <!-- Transcript View -->
+                    <div class="markdown-render" *ngIf="activeTab === 'transcript'" [innerHTML]="formatMarkdown(transcriptMarkdown || '# Interview Transcript\n\n*No conversation entries yet. Establish connection and begin speaking.*')"></div>
+
+                    <!-- Walkthrough View -->
+                    <div class="markdown-render" *ngIf="activeTab === 'walkthrough'" [innerHTML]="formatMarkdown(walkthroughMarkdown || '# Interview Walkthrough\n\n*Submit questions to begin recording feedback.*')"></div>
+                </div>
+
+                <!-- End Session Footer -->
+                <div class="panel-footer">
+                    <button class="btn-end btn-secondary w-100" (click)="leaveInterview()">
+                        <i class='bx bx-log-out-circle'></i> Exit Interview
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
