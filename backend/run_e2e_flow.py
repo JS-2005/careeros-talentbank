@@ -6,7 +6,7 @@ from core.config import settings
 BACKEND_URL = "http://127.0.0.1:8000"
 DEV_TOKEN = "dev-token"
 
-async def test_e2e():
+async def run_e2e_flow():
     headers = {
         "Authorization": f"Bearer {DEV_TOKEN}",
         "Content-Type": "application/json"
@@ -100,4 +100,4 @@ async def test_e2e():
         print("\n--- ALL API E2E TESTS PASSED ---")
 
 if __name__ == "__main__":
-    asyncio.run(test_e2e())
+    asyncio.run(run_e2e_flow())

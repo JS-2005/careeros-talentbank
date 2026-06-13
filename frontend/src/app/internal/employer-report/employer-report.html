@@ -55,7 +55,7 @@
           <div class="card-body">
             <h5 class="card-title text-primary border-bottom pb-2"><i class="bx bx-bar-chart-alt-2 me-2"></i>Score Breakdown</h5>
             <div class="row mt-3">
-              <div class="col-md-3 mb-3" *ngFor="let key of ['technical_skills', 'communication', 'problem_solving', 'culture_fit']">
+              <div class="col-md mb-3" *ngFor="let key of ['communication', 'technical_understanding', 'problem_solving', 'role_fit', 'confidence_and_clarity']">
                 <div class="p-3 bg-light rounded text-center h-100">
                   <h6 class="text-muted text-uppercase mb-2">{{ key.replace('_', ' ') }}</h6>
                   <h3 class="mb-0">{{ reportJson.score_breakdown?.[key] || 0 }}<span class="text-muted fs-6">/100</span></h3>
@@ -74,7 +74,10 @@
           <div class="card-body">
             <h5 class="card-title text-success"><i class="bx bx-check-circle me-2"></i>Strengths</h5>
             <ul class="list-group list-group-flush mt-3">
-              <li class="list-group-item px-0" *ngFor="let str of reportJson.strengths">{{ str }}</li>
+              <li class="list-group-item px-0" *ngFor="let str of reportJson.strengths">
+                <strong class="text-dark">{{ str.point }}</strong>
+                <p class="mb-0 text-muted mt-1" style="white-space: pre-line;">{{ str.evidence }}</p>
+              </li>
               <li class="list-group-item px-0 text-muted" *ngIf="!reportJson.strengths?.length">No strengths listed.</li>
             </ul>
           </div>
@@ -85,7 +88,10 @@
           <div class="card-body">
             <h5 class="card-title text-warning"><i class="bx bx-error-circle me-2"></i>Areas for Improvement</h5>
             <ul class="list-group list-group-flush mt-3">
-              <li class="list-group-item px-0" *ngFor="let weak of reportJson.weaknesses">{{ weak }}</li>
+              <li class="list-group-item px-0" *ngFor="let weak of reportJson.weaknesses">
+                <strong class="text-dark">{{ weak.point }}</strong>
+                <p class="mb-0 text-muted mt-1" style="white-space: pre-line;">{{ weak.evidence }}</p>
+              </li>
               <li class="list-group-item px-0 text-muted" *ngIf="!reportJson.weaknesses?.length">No areas for improvement listed.</li>
             </ul>
           </div>
