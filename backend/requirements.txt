@@ -11,3 +11,5 @@ supabase
 aiolimiter
 pytest
 httpx
+aiortc
+python-dotenv
