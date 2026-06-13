@@ -36,8 +36,8 @@
   <div *ngIf="currentTab === 'search'" class="tab-content-area">
     <!-- Hero Section -->
     <div class="hero-section">
-      <h1 class="hero-title">Discover suitable job matches based on your profile.</h1>
-      <p class="hero-subtitle">AI helps compare your resume with job requirements and highlights skill gaps for improvement.</p>
+      <h1 class="hero-title">Discover your perfect job matches.</h1>
+      <p class="hero-subtitle">Let AI scan the web using the resume in your profile to find the best roles for you.</p>
     </div>
 
     <!-- Advanced Search Card -->
@@ -49,16 +49,11 @@
           <div class="alert-text-content">
             <h4 class="alert-title">No Resume Linked</h4>
             <p class="alert-desc">We couldn't find a resume PDF in your profile. Please upload one in the Profile page
-              first, or view a sample recommendation.</p>
+              first.</p>
           </div>
         </div>
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <button type="button" class="btn btn-outline" style="background: transparent; color: white; border-color: white;" (click)="loadSampleFallback()">
-            View Sample AI Recommendation
-          </button>
-          <a routerLink="/internal/profile" class="btn-profile-link" style="padding: 0.5rem 1rem;">Go to Profile <i
-              class="bx bx-right-arrow-alt"></i></a>
-        </div>
+        <a routerLink="/internal/profile" class="btn-profile-link">Go to Profile <i
+            class="bx bx-right-arrow-alt"></i></a>
       </div>
 
       <form (ngSubmit)="onSubmit()" #matcherForm="ngForm" class="search-form-layout">
@@ -143,13 +138,13 @@
 
       <h3 class="loading-stage-title">
         <span *ngIf="isLoading">Scanning the web for opportunities...</span>
-        <span *ngIf="isEnhancing">AI is extracting job requirements...</span>
-        <span *ngIf="isScoring">Comparing your profile with job expectations...</span>
+        <span *ngIf="isEnhancing">Gemma extracting deep job requirements...</span>
+        <span *ngIf="isScoring">Analyzing and calculating compatibility score...</span>
       </h3>
       <p class="loading-stage-desc">
-        <span *ngIf="isLoading">Running query based on your profile roles and expectations.</span>
+        <span *ngIf="isLoading">Running SerpApi query based on your profile roles and expectations.</span>
         <span *ngIf="isEnhancing">Reviewing responsibilities, mandatory core skills, and soft skills.</span>
-        <span *ngIf="isScoring">Running semantic search to highlight match and skill gaps.</span>
+        <span *ngIf="isScoring">Running ReMAP semantic vector search and logic analyzer.</span>
       </p>
 
       <!-- Loading Progress Steps UI -->
@@ -171,29 +166,11 @@
       </div>
     </div>
 
-    <!-- Error State -->
-    <div class="search-glass-card animate-fade-in" *ngIf="searchError" style="margin-top: 1.5rem; border-left: 4px solid var(--color-warning);">
-      <div style="display: flex; gap: 1rem; align-items: flex-start;">
-        <i class="bx bx-error-circle text-warning" style="font-size: 1.5rem; margin-top: 0.2rem;"></i>
-        <div>
-          <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.1rem; font-weight: 600;">Search Timeout / Error</h4>
-          <p style="margin: 0 0 1.2rem 0; color: var(--text-secondary); line-height: 1.5;">{{ searchError }}</p>
-          <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-            <button class="btn btn-outline" (click)="onSubmit()"><i class="bx bx-refresh"></i> Retry API</button>
-            <button class="btn btn-primary" (click)="loadSampleFallback()"><i class="bx bx-bulb"></i> View Sample AI Recommendation</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Default Placeholder State -->
     <div class="placeholder-state" *ngIf="!hasSearched">
       <i class="bx bx-file-find placeholder-icon"></i>
       <h3 class="placeholder-title">No search executed</h3>
-      <p class="placeholder-text">Enter your preferences above to discover curated opportunities, or view a demo.</p>
-      <button class="btn btn-primary" style="margin-top: 1rem;" (click)="loadSampleFallback()">
-        View Sample AI Recommendation
-      </button>
+      <p class="placeholder-text">Enter your preferences above to discover curated opportunities.</p>
     </div>
 
     <!-- Found Roles Section -->
@@ -292,9 +269,6 @@
           <div class="recommended-card-content">
             <!-- Left Info Block -->
             <div class="card-main-info">
-              <div style="font-size: 11px; font-weight: 600; color: var(--color-warning); text-transform: uppercase; margin-bottom: 8px;" *ngIf="job.is_fallback_sample">
-                Sample recommendation for judge walkthrough
-              </div>
               <div class="job-meta-top">
                 <span class="card-company-name">{{ job.company_name }}</span>
                 <span class="meta-bullet">•</span>
@@ -466,29 +440,6 @@
             <span *ngFor="let skill of selectedJob.soft_skills" class="skill-chip soft">{{ skill }}</span>
           </div>
         </div>
-      </div>
-
-      <!-- Recommended Actions -->
-      <div class="drawer-details-section" *ngIf="selectedJob.recommended_actions && selectedJob.recommended_actions.length > 0">
-        <h3 class="section-subtitle" style="display: flex; align-items: center; gap: 0.5rem;">
-          <i class="bx bx-bulb text-warning"></i> Recommended Actions
-        </h3>
-        <ul class="drawer-list-items">
-          <li *ngFor="let action of selectedJob.recommended_actions">{{ action }}</li>
-        </ul>
-      </div>
-
-      <!-- Demo CTAs -->
-      <div class="drawer-ctas" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-light); display: flex; gap: 1rem; flex-direction: column;">
-        <p style="font-size: 0.85rem; color: var(--text-secondary); text-align: center; margin: 0;">
-          <i class="bx bx-info-circle"></i> Ready for the next step in the flow?
-        </p>
-        <button class="btn btn-primary w-full" routerLink="/internal/ai-interview" style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; padding: 0.75rem;">
-          <i class="bx bx-microphone"></i> Prepare for AI Interview
-        </button>
-        <button class="btn btn-outline w-full" routerLink="/employer-report-demo" style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; padding: 0.75rem;">
-          <i class="bx bx-file"></i> View Employer Report Demo
-        </button>
       </div>
     </div>
   </div>

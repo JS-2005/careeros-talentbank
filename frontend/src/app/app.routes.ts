@@ -12,12 +12,9 @@ import { MeetingRoom } from './meeting-room/meeting-room';
 import { MeetingReport } from './meeting-report/meeting-report';
 import { authGuard } from './guards/auth-guard';
 
-import { EmployerReportDemo } from './employer-report-demo/employer-report-demo';
-
 export const routes: Routes = [
     { path: '', component: LandingPage },
     { path: 'auth', component: Auth },
-    { path: 'employer-report-demo', component: EmployerReportDemo },
     { path: 'first-login', component: FirstLogin, canActivate: [authGuard] },
     { path: ':id/meeting-lobby', component: MeetingLobby, canActivate: [authGuard] },
     { path: ':id/meeting-room', component: MeetingRoom, canActivate: [authGuard] },
