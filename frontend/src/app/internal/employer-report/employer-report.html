@@ -1,0 +1,115 @@
+<div class="report-viewer-container">
+  
+  <div *ngIf="isLoading" class="text-center my-5">
+    <div class="spinner-border text-primary" role="status"></div>
+    <p class="mt-2 text-muted">Loading report...</p>
+  </div>
+
+  <div *ngIf="errorMessage" class="alert alert-danger">
+    {{ errorMessage }}
+  </div>
+
+  <div *ngIf="reportJson && !isLoading" class="report-content" id="report-printable-area">
+    
+    <!-- Top Action Bar -->
+    <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
+      <a routerLink="/internal/employer-reports" class="btn btn-outline-secondary"><i class="bx bx-arrow-back"></i> Back to Reports</a>
+      <button class="btn btn-primary" (click)="printReport()"><i class="bx bx-printer"></i> Print / Save PDF</button>
+    </div>
+
+    <!-- Header & Score -->
+    <div class="card mb-4 border-0 shadow-sm">
+      <div class="card-body row align-items-center">
+        <div class="col-md-8">
+          <h2 class="mb-1">AI Interview Report</h2>
+          <h5 class="text-muted">{{ reportJson.candidate_overview?.applied_role || 'Unknown Role' }}</h5>
+        </div>
+        <div class="col-md-4 text-md-end mt-3 mt-md-0">
+          <div class="score-badge p-3 rounded text-center d-inline-block bg-primary text-white">
+            <h1 class="mb-0 display-4 fw-bold">{{ reportJson.overall_score }}<span class="fs-4">/100</span></h1>
+            <small class="text-uppercase tracking-wide">Overall Score</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Executive Summary & Recommendation -->
+    <div class="card mb-4 border-0 shadow-sm bg-light">
+      <div class="card-body">
+        <h4 class="card-title text-primary"><i class="bx bx-bulb me-2"></i>Executive Summary</h4>
+        <p class="fs-5">{{ reportJson.executive_summary }}</p>
+        
+        <hr class="my-4">
+        
+        <h5 class="text-dark fw-bold mb-3">Final Recommendation:</h5>
+        <div class="alert alert-info border-0 shadow-sm mb-0 fs-6">
+          {{ reportJson.final_recommendation }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Score Breakdown -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-body">
+            <h5 class="card-title text-primary border-bottom pb-2"><i class="bx bx-bar-chart-alt-2 me-2"></i>Score Breakdown</h5>
+            <div class="row mt-3">
+              <div class="col-md-3 mb-3" *ngFor="let key of ['technical_skills', 'communication', 'problem_solving', 'culture_fit']">
+                <div class="p-3 bg-light rounded text-center h-100">
+                  <h6 class="text-muted text-uppercase mb-2">{{ key.replace('_', ' ') }}</h6>
+                  <h3 class="mb-0">{{ reportJson.score_breakdown?.[key] || 0 }}<span class="text-muted fs-6">/100</span></h3>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Strengths & Weaknesses -->
+    <div class="row mb-4">
+      <div class="col-md-6 mb-4 mb-md-0">
+        <div class="card border-0 shadow-sm h-100 border-top border-success border-4">
+          <div class="card-body">
+            <h5 class="card-title text-success"><i class="bx bx-check-circle me-2"></i>Strengths</h5>
+            <ul class="list-group list-group-flush mt-3">
+              <li class="list-group-item px-0" *ngFor="let str of reportJson.strengths">{{ str }}</li>
+              <li class="list-group-item px-0 text-muted" *ngIf="!reportJson.strengths?.length">No strengths listed.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100 border-top border-warning border-4">
+          <div class="card-body">
+            <h5 class="card-title text-warning"><i class="bx bx-error-circle me-2"></i>Areas for Improvement</h5>
+            <ul class="list-group list-group-flush mt-3">
+              <li class="list-group-item px-0" *ngFor="let weak of reportJson.weaknesses">{{ weak }}</li>
+              <li class="list-group-item px-0 text-muted" *ngIf="!reportJson.weaknesses?.length">No areas for improvement listed.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Follow up questions -->
+    <div class="card mb-4 border-0 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title text-primary border-bottom pb-2"><i class="bx bx-question-mark me-2"></i>Suggested Follow-up Questions</h5>
+        <ul class="list-group list-group-flush mt-3">
+          <li class="list-group-item px-0" *ngFor="let q of reportJson.follow_up_questions"><strong>Q:</strong> {{ q }}</li>
+          <li class="list-group-item px-0 text-muted" *ngIf="!reportJson.follow_up_questions?.length">No follow-up questions suggested.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="text-center mt-5 mb-4 px-4">
+      <small class="text-muted fst-italic">
+        {{ reportJson.responsible_ai_disclaimer || 'This AI Interview Report is a decision-support tool. It does not replace human recruiters, interviewers, or final hiring decisions.' }}
+      </small>
+    </div>
+
+  </div>
+</div>

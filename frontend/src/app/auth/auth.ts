@@ -1,5 +1,7 @@
 import { Component } from '@angular/core';
 import { AuthService } from '../services/auth-service';
+import { Router } from '@angular/router';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'app-root',
@@ -8,7 +10,9 @@ import { AuthService } from '../services/auth-service';
 })
 
 export class Auth {
-  constructor(private authService: AuthService) {}
+  isProduction = environment.production;
+
+  constructor(private authService: AuthService, private router: Router) {}
 
   async login() {
     try {
@@ -17,6 +21,15 @@ export class Auth {
       alert('Login failed: '+error); 
     }
   }; 
+
+  async devLogin() {
+    try {
+      this.authService.devSignIn();
+      this.router.navigate(['/internal']);
+    } catch(error) {
+      alert('Dev Login failed: '+error); 
+    }
+  }
 
   async signOut() {
     try{

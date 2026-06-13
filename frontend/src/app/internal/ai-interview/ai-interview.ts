@@ -1,141 +1,96 @@
-import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { Internal } from '../internal';
-import { AuthService } from '../../services/auth-service';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { InterviewService, AnswerItem } from '../../services/interview.service';
+
+type InterviewState = 'idle' | 'creating_session' | 'ready' | 'submitting_answers' | 'generating_report' | 'completed' | 'error';
 
 @Component({
   selector: 'app-ai-interview',
-  imports: [],
+  standalone: true,
+  imports: [CommonModule, FormsModule],
   templateUrl: './ai-interview.html',
   styleUrl: './ai-interview.css',
 })
 export class AiInterview implements OnInit {
-  internal = inject(Internal);
-  authService = inject(AuthService);
+  interviewService = inject(InterviewService);
   router = inject(Router);
-  cdr = inject(ChangeDetectorRef);
 
-  googleAvatarUrl = '';
-  tracks: any[] = [];
-  isNavigating = false;
+  state: InterviewState = 'idle';
+  errorMessage = '';
 
-  async startPractice(track: any) {
-    if (this.isNavigating) return;
+  targetJobTitle = '';
+  targetCompanyName = '';
+  sessionId = '';
+  consentGiven = false;
+
+  questions: string[] = [
+    "Tell us about yourself and why you are interested in this role.",
+    "What relevant technical skills or projects make you suitable for this role?",
+    "Describe a challenging problem you solved in a project.",
+    "How do you handle deadlines or unexpected issues?",
+    "How do you communicate and collaborate in a team?",
+    "What skills do you still need to improve for this role?"
+  ];
+
+  answers: string[] = new Array(6).fill('');
+
+  ngOnInit() {
+    // idle state
+  }
+
+  async startSession() {
+    if (!this.targetJobTitle.trim()) {
+      this.errorMessage = 'Target Job Title is required to start the interview.';
+      return;
+    }
+    
+    this.state = 'creating_session';
+    this.errorMessage = '';
     try {
-      this.isNavigating = true;
-      const user = await this.authService.getUser();
-      if (!user) {
-        alert('Please log in to start a practice session.');
-        return;
-      }
-
-      // Check if a user_interview record already exists for this user and interview_id
-      const { data: existing, error: fetchError } = await this.authService.supabaseClient
-        .from('user_interview')
-        .select('id')
-        .eq('auth_id', user.id)
-        .eq('interview_id', track.id)
-        .maybeSingle();
-
-      if (fetchError) throw fetchError;
-
-      let interviewRecordId: any;
-
-      if (existing) {
-        interviewRecordId = existing.id;
-      } else {
-        // Create new record
-        const { data: inserted, error: insertError } = await this.authService.supabaseClient
-          .from('user_interview')
-          .insert({
-            interview_id: track.id,
-            auth_id: user.id,
-            interview_completed: false
-          })
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        interviewRecordId = inserted.id;
-      }
-
-      // Navigate to /:id/meeting-lobby
-      this.router.navigate([`/${interviewRecordId}/meeting-lobby`]);
-    } catch (err) {
-      console.error('Error starting practice session:', err);
-      alert('Failed to start practice session. Please try again.');
-    } finally {
-      this.isNavigating = false;
-      this.cdr.detectChanges();
+      const res = await this.interviewService.createInterviewSession(this.targetJobTitle, undefined, this.targetCompanyName);
+      this.sessionId = res.session_id;
+      this.state = 'ready';
+    } catch (e: any) {
+      this.errorMessage = 'Failed to create session: ' + (e.error?.detail || e.message);
+      this.state = 'error';
     }
   }
 
-  async ngOnInit() {
+  get isSubmitValid(): boolean {
+    if (!this.consentGiven) return false;
+    for (const ans of this.answers) {
+      if (!ans || ans.trim().length < 20) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async submitAndGenerate() {
+    if (!this.isSubmitValid) return;
+
+    this.state = 'submitting_answers';
+    this.errorMessage = '';
+
+    const formattedAnswers: AnswerItem[] = this.questions.map((q, i) => ({
+      question: q,
+      answer_text: this.answers[i],
+      answer_order: i + 1
+    }));
+
     try {
-      const user = await this.authService.getUser();
-      if (user) {
-        const metadata = user.user_metadata || {};
-        const fallbackName = metadata['full_name'] || user.email?.split('@')[0] || 'User';
-        this.googleAvatarUrl = metadata['avatar_url'] || metadata['picture'] || `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackName)}&background=0D8ABC&color=fff&size=100`;
-      }
-      await this.loadTracks();
-    } catch (err) {
-      console.error('Error fetching user metadata in ai-interview:', err);
-    } finally {
-      this.cdr.detectChanges();
+      await this.interviewService.submitAnswers(this.sessionId, this.consentGiven, formattedAnswers);
+      
+      this.state = 'generating_report';
+      const genRes = await this.interviewService.generateReport(this.sessionId);
+      
+      this.state = 'completed';
+      this.router.navigate(['/internal/employer-report', genRes.report_id]);
+    } catch (e: any) {
+      this.errorMessage = 'An error occurred during submission/generation: ' + (e.error?.detail || e.message);
+      this.state = 'error';
     }
-  }
-
-  async loadTracks() {
-    try {
-      const { data, error } = await this.authService.supabaseClient
-        .from('ai-interview')
-        .select('*')
-        .order('id', { ascending: true });
-      if (error) throw error;
-      this.tracks = data || [];
-    } catch (err) {
-      console.error('Error loading interview tracks:', err);
-    }
-  }
-
-  getTrackIcon(title: string): string {
-    const lowerTitle = title.toLowerCase();
-    if (lowerTitle.includes('engineering') || lowerTitle.includes('it') || lowerTitle.includes('code')) {
-      return 'bx bx-code-block';
-    }
-    if (lowerTitle.includes('business') || lowerTitle.includes('strategy') || lowerTitle.includes('chart')) {
-      return 'bx bx-line-chart';
-    }
-    if (lowerTitle.includes('marketing') || lowerTitle.includes('growth') || lowerTitle.includes('megaphone')) {
-      return 'bx bx-megaphone';
-    }
-    if (lowerTitle.includes('data') || lowerTitle.includes('science') || lowerTitle.includes('sql')) {
-      return 'bx bx-data';
-    }
-    if (lowerTitle.includes('leadership') || lowerTitle.includes('hr') || lowerTitle.includes('group')) {
-      return 'bx bx-group';
-    }
-    return 'bx bx-book-open';
-  }
-
-  getTrackIconClass(title: string): string {
-    const lowerTitle = title.toLowerCase();
-    if (lowerTitle.includes('engineering') || lowerTitle.includes('it') || lowerTitle.includes('code')) {
-      return 'icon-box bg-blue';
-    }
-    if (lowerTitle.includes('business') || lowerTitle.includes('strategy') || lowerTitle.includes('chart')) {
-      return 'icon-box bg-white shadow-icon';
-    }
-    if (lowerTitle.includes('marketing') || lowerTitle.includes('growth') || lowerTitle.includes('megaphone')) {
-      return 'icon-box bg-green';
-    }
-    if (lowerTitle.includes('data') || lowerTitle.includes('science') || lowerTitle.includes('sql')) {
-      return 'icon-box bg-teal';
-    }
-    if (lowerTitle.includes('leadership') || lowerTitle.includes('hr') || lowerTitle.includes('group')) {
-      return 'icon-box bg-red';
-    }
-    return 'icon-box bg-blue';
   }
 }

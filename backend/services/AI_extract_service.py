@@ -227,3 +227,45 @@ class AIOrganiser:
         except Exception as e:
             print(f"Error during ReMAP evaluation: {str(e)}")
             return job_data  # Return original job without remap score
+
+    @staticmethod
+    async def generate_interview_report(answers: list, target_job_title: str, target_company_name: str) -> dict:
+        from schemas.interview_schema import InterviewReportResult
+        
+        system_instruct = SystemMessage(
+            content="""You are an expert HR Technical Interview Assessor. Your job is to evaluate a candidate's text-based interview responses and generate a structured, objective, and professional AI Interview Report.
+
+CRITICAL RULES:
+1. Grounding: You must base your evaluation entirely on the provided Questions and Answers. Do not invent details.
+2. Constructive but Realistic: If the candidate gives weak or vague answers, reflect that in the score and weaknesses. If they give strong answers, highlight them.
+3. Strict Output Schema: Return ONLY the structured JSON that conforms to the schema. Do not wrap it in markdown code blocks if the structured output wrapper handles it, just output raw valid JSON. Do not include conversational text.
+4. Score Clamping: All numerical scores MUST be between 0 and 100.
+5. Arrays: Ensure `strengths`, `weaknesses`, and `follow_up_questions` are returned as arrays.
+6. The `responsible_ai_disclaimer` field MUST be included exactly as defined in the schema defaults.
+"""
+        )
+        
+        # Format the answers for the prompt
+        qa_text = ""
+        for a in answers:
+            qa_text += f"Q: {a['question']}\nA: {a['answer_text']}\n\n"
+            
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": f"Applied Role: {target_job_title}\nCompany: {target_company_name or 'N/A'}\n\nPlease evaluate the following interview transcript and generate the report based on this target role:\n\n{qa_text}"
+                }
+            ]
+        )
+        
+        structured_llm = get_structured_llm(InterviewReportResult)
+        
+        try:
+            report_result = await structured_llm.ainvoke([system_instruct, message])
+            print("Successfully executed generate_interview_report")
+            return report_result.model_dump()
+        except Exception as e:
+            print(f"Error during generate_interview_report evaluation: {str(e)}")
+            raise e
+
