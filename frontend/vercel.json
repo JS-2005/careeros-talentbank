@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/_/backend/:match*",
-      "destination": "https://careeros.vercel.app/:match*"
+      "destination": "https://careeros-backend.vercel.app/:match*"
     },
     {
       "source": "/(.*)",
