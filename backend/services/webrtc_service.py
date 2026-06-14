@@ -1,7 +1,7 @@
 import os
 import json
 import asyncio
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
 from services.supabase_service import _get_supabase
 from services.AI_extract_service import get_llm
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -20,49 +20,68 @@ active_sessions = {}
 # Keep track of active connections to clean up later
 pcs = set()
 
+# In-memory fallback storage for transcript/walkthrough on ephemeral filesystems (e.g. Render)
+_in_memory_transcript = "# Interview Transcript\n\n"
+_in_memory_walkthrough = "# Interview Walkthrough\n\n"
+
 def read_file_content(file_path: str) -> str:
-    """Read contents of a file if it exists, otherwise return empty string."""
+    """Read contents of a file if it exists, falling back to in-memory storage."""
+    global _in_memory_transcript, _in_memory_walkthrough
     if os.path.exists(file_path):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
             print(f"Error reading file {file_path}: {e}")
+    # Fallback to in-memory content (for ephemeral filesystems like Render)
+    if file_path == TRANSCRIPT_PATH:
+        return _in_memory_transcript
+    elif file_path == WALKTHROUGH_PATH:
+        return _in_memory_walkthrough
     return ""
 
 def reset_interview_files():
     """Clear or initialize transcript.md and interview-walkthrough.md."""
+    global _in_memory_transcript, _in_memory_walkthrough
+    _in_memory_transcript = "# Interview Transcript\n\n"
+    _in_memory_walkthrough = "# Interview Walkthrough\n\n"
     os.makedirs(os.path.dirname(TRANSCRIPT_PATH), exist_ok=True)
     try:
         with open(TRANSCRIPT_PATH, "w", encoding="utf-8") as f:
-            f.write("# Interview Transcript\n\n")
+            f.write(_in_memory_transcript)
         with open(WALKTHROUGH_PATH, "w", encoding="utf-8") as f:
-            f.write("# Interview Walkthrough\n\n")
+            f.write(_in_memory_walkthrough)
         print("Initialized transcript.md and interview-walkthrough.md")
     except Exception as e:
-        print(f"Error initializing files: {e}")
+        print(f"Error initializing files (best-effort on ephemeral FS): {e}")
 
 def append_to_transcript(speaker: str, text: str):
     """Append a dialogue turn to transcript.md."""
+    global _in_memory_transcript
+    entry = f"**{speaker}**: {text}\n\n"
+    _in_memory_transcript += entry
     try:
         with open(TRANSCRIPT_PATH, "a", encoding="utf-8") as f:
-            f.write(f"**{speaker}**: {text}\n\n")
+            f.write(entry)
     except Exception as e:
-        print(f"Error appending to transcript.md: {e}")
+        print(f"Error appending to transcript.md (in-memory fallback active): {e}")
 
 def append_to_walkthrough(question_text: str, category: str, difficulty: str, response: str, diagram_url: str = None):
     """Append question and candidate answer details to interview-walkthrough.md."""
+    global _in_memory_walkthrough
+    entry = f"### Question: {question_text}\n"
+    entry += f"* **Category**: {category.capitalize()}\n"
+    entry += f"* **Difficulty**: {difficulty.capitalize()}\n\n"
+    entry += f"**User Response**:\n{response}\n\n"
+    if diagram_url:
+        entry += f"**Candidate Diagram**:\n![Candidate Diagram]({diagram_url})\n\n"
+    entry += "---\n\n"
+    _in_memory_walkthrough += entry
     try:
         with open(WALKTHROUGH_PATH, "a", encoding="utf-8") as f:
-            f.write(f"### Question: {question_text}\n")
-            f.write(f"* **Category**: {category.capitalize()}\n")
-            f.write(f"* **Difficulty**: {difficulty.capitalize()}\n\n")
-            f.write(f"**User Response**:\n{response}\n\n")
-            if diagram_url:
-                f.write(f"**Candidate Diagram**:\n![Candidate Diagram]({diagram_url})\n\n")
-            f.write("---\n\n")
+            f.write(entry)
     except Exception as e:
-        print(f"Error appending to interview-walkthrough.md: {e}")
+        print(f"Error appending to interview-walkthrough.md (in-memory fallback active): {e}")
 
 async def get_interview_questions(user_interview_id: str):
     """Load questions list from supabase for a user_interview_id with transient error retry logic."""
@@ -313,7 +332,11 @@ async def generate_and_upload_report(user_interview_id: str, user_name: str, tra
 
 async def handle_webrtc_offer(sdp: str, offer_type: str, user_interview_id: str):
     """Establishes WebRTC RTCPeerConnection and returns answer."""
-    pc = RTCPeerConnection()
+    # Configure with STUN server to discover public IP (matching frontend config)
+    config = RTCConfiguration(
+        iceServers=[RTCIceServer(urls="stun:stun.l.google.com:19302")]
+    )
+    pc = RTCPeerConnection(configuration=config)
     pcs.add(pc)
 
     @pc.on("datachannel")
@@ -358,6 +381,16 @@ async def handle_webrtc_offer(sdp: str, offer_type: str, user_interview_id: str)
     # Create answer
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
+
+    # Wait for ICE gathering to complete (non-trickle ICE)
+    # All candidates must be embedded in the SDP answer since we use HTTP POST signaling
+    ice_gather_timeout = 30  # 30 × 0.1s = 3 seconds max
+    while pc.iceGatheringState != "complete" and ice_gather_timeout > 0:
+        await asyncio.sleep(0.1)
+        ice_gather_timeout -= 1
+
+    if pc.iceGatheringState != "complete":
+        print(f"WARNING: ICE gathering did not complete within timeout. State: {pc.iceGatheringState}")
 
     return {
         "sdp": pc.localDescription.sdp,
