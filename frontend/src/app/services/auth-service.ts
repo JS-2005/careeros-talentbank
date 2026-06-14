@@ -23,12 +23,12 @@ export class AuthService {
     const { data, error } = await this.supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'http://localhost:4200/internal'
+        redirectTo: 'https://careeros-talentbank.vercel.app/internal'
       }
     });
-    
+
     if (error) throw error;
-    
+
     return data;
   }
 
@@ -36,19 +36,19 @@ export class AuthService {
     if (this.currentUser) {
       return this.currentUser;
     }
-    const { data, error } = await this.supabase.auth.getUser(); 
+    const { data, error } = await this.supabase.auth.getUser();
 
-    if(error || !data?.user) return null; 
+    if (error || !data?.user) return null;
 
     this.currentUser = data.user;
-    return data.user; 
+    return data.user;
   }
-  
+
   async signOut() {
     this.currentUser = null;
-    const { error } = await this.supabase.auth.signOut(); 
+    const { error } = await this.supabase.auth.signOut();
 
-    if (error) throw error; 
+    if (error) throw error;
   }
-  
+
 }
