@@ -4,7 +4,6 @@ from supabase import create_client, Client
 from core.config import settings
 import asyncio
 import time
-import os
 
 # HTTPBearer extracts the "Authorization: Bearer <token>" header
 security = HTTPBearer()
@@ -34,13 +33,6 @@ async def get_supabase_client(credentials: HTTPAuthorizationCredentials = Depend
     try:
         supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
         
-        if token == "dev-token" and not os.getenv("VERCEL"):
-            class MockUser:
-                id = "747e12b2-4a5d-47ee-98d9-fa71a714b9ad"
-                email = "tansx1007@gmail.com"
-            supabase.user = MockUser()
-            return supabase
-            
         # Check cache first
         user = get_cached_user(token)
         if user is None:
@@ -68,9 +60,6 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
     """
     token = credentials.credentials
     try:
-        if token == "dev-token" and not os.getenv("VERCEL"):
-            return "747e12b2-4a5d-47ee-98d9-fa71a714b9ad"
-            
         user = get_cached_user(token)
         if user is not None:
             return user.id

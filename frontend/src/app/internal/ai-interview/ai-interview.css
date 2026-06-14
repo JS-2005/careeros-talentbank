@@ -1,54 +1,280 @@
-.interview-container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
+/* Topbar responsive wrapper & layout */
+.topbar {
+  height: 72px;
+  padding: 0 40px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.header {
-  margin-bottom: 2rem;
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.header h2 {
+.topbar-title {
+  font-family: var(--font-family-display);
+  font-size: 18px;
   font-weight: 700;
-  color: #333;
+  color: var(--text-primary);
 }
 
-.setup-section {
-  padding: 2rem;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #dee2e6;
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.form-group {
-  margin-bottom: 1rem;
+.icon-btn.burger-btn {
+  display: none; /* Hidden on desktop */
 }
 
-.form-group label {
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-  display: block;
+.icon-btn {
+  font-size: 20px;
+  color: var(--text-secondary);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
 }
 
-.card {
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+.icon-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
-.card-title {
-  font-weight: 600;
-  color: #0d6efd;
+.user-avatar img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px var(--border);
 }
 
-.consent-card {
-  background-color: #e9ecef;
-  border-left: 4px solid #0d6efd;
+/* Learning Hub Content */
+.learning-hub-container {
+  padding: 40px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
 }
 
-.text-danger {
-  color: #dc3545 !important;
+.hero-banner {
+  background: linear-gradient(135deg, #1e1b4b, #0f172a); /* Indigo-950 to Slate-900 */
+  position: relative;
+  overflow: hidden;
+  padding: 56px 48px;
+  margin-bottom: 40px;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: var(--radius-lg);
+  color: white;
 }
 
-.action-bar {
-  margin-top: 2rem;
+.hero-banner::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, rgba(0, 0, 0, 0) 70%);
+  pointer-events: none;
+}
+
+.hero-banner::after {
+  content: "";
+  position: absolute;
+  bottom: -20%;
+  left: -10%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.1) 0%, rgba(0, 0, 0, 0) 60%);
+  pointer-events: none;
+}
+
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-primary);
+  color: white;
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+}
+
+.hero-banner h2 {
+  font-family: var(--font-family-display);
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  max-width: 600px;
+  line-height: 1.25;
+}
+
+.hero-banner p {
+  color: #94a3b8;
+  font-size: 15px;
+  max-width: 700px;
+  line-height: 1.6;
+}
+
+.tracks-header {
+  margin-bottom: 32px;
+}
+
+.tracks-header h3 {
+  font-family: var(--font-family-display);
+  font-size: 20px;
+  margin-bottom: 6px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tracks-header p {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.tracks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
+}
+
+.track-card {
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.track-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  border-color: var(--border-focus);
+}
+
+.icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 24px;
+  transition: transform 0.3s ease;
+}
+
+.track-card:hover .icon-box {
+  transform: scale(1.08) rotate(3deg);
+}
+
+/* Specific customized badge gradient styling */
+.bg-blue { 
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8); 
+  color: white; 
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+}
+
+.bg-white.shadow-icon { 
+  background: white; 
+  color: #4f46e5; 
+  border: 1px solid var(--border); 
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+}
+
+.bg-green { 
+  background: linear-gradient(135deg, #10b981, #047857); 
+  color: white; 
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.bg-teal { 
+  background: linear-gradient(135deg, #14b8a6, #0f766e); 
+  color: white; 
+  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.25);
+}
+
+.bg-red { 
+  background: linear-gradient(135deg, #f43f5e, #be123c); 
+  color: white; 
+  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.25);
+}
+
+.track-card h4 {
+  font-family: var(--font-family-display);
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--text-primary);
+}
+
+.track-card p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 28px;
+  flex: 1;
+}
+
+.w-100 {
+  width: 100%;
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+  .icon-btn.burger-btn {
+    display: flex;
+  }
+  
+  .topbar {
+    padding: 0 20px;
+  }
+  
+  .learning-hub-container {
+    padding: 24px 20px;
+  }
+  
+  .hero-banner {
+    padding: 40px 24px;
+    margin-bottom: 28px;
+  }
+  
+  .hero-banner h2 {
+    font-size: 24px;
+  }
+  
+  .hero-banner p {
+    font-size: 14px;
+  }
+  
+  .tracks-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .track-card {
+    padding: 24px;
+  }
 }

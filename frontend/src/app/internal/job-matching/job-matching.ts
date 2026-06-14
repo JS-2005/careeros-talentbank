@@ -31,8 +31,6 @@ export interface Job {
   matched_optional_skills?: string[];
   isExtracting?: boolean;
   extractionFailed?: boolean;
-  is_fallback_sample?: boolean;
-  recommended_actions?: string[];
 }
 
 @Component({
@@ -40,14 +38,12 @@ export interface Job {
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './job-matching.html',
-  styleUrls: ['./job-matching.css'],
+  styleUrl: './job-matching.css',
 })
 export class JobMatching implements OnInit {
   private cdr = inject(ChangeDetectorRef);
   internal = inject(Internal);
   authService = inject(AuthService);
-
-  private readonly apiBase = (environment as { backendUrl?: string }).backendUrl || '/_/backend';
 
   googleAvatarUrl = '';
   userFullName = 'User';
@@ -80,11 +76,11 @@ export class JobMatching implements OnInit {
           const sessionRes = await this.authService.supabaseClient.auth.getSession();
           const token = sessionRes.data.session?.access_token;
           if (token) {
-            const savedRes = await this.fetchWithTimeout(`${this.apiBase}/api/v1/get-saved-jobs`, {
+            const savedRes = await fetch(`${environment.backendUrl}/api/v1/get-saved-jobs`, {
               headers: {
                 'Authorization': `Bearer ${token}`
               }
-            }, 10000);
+            });
             if (savedRes.ok) {
               const savedData = await savedRes.json();
               if (savedData.job_data && savedData.job_data.length > 0) {
@@ -135,7 +131,6 @@ export class JobMatching implements OnInit {
 
   // Results state
   hasSearched = false;
-  searchError: string | null = null;
   extractedJobsGroups: { role: string; jobs: Job[] }[] = [];
   remapResults: Job[] = [];
   selectedJob: Job | null = null;
@@ -151,10 +146,6 @@ export class JobMatching implements OnInit {
     this.filterJobs();
   }
 
-  private includesText(value: unknown, query: string): boolean {
-    return String(value || '').toLowerCase().includes(query);
-  }
-
   filterJobs() {
     if (!this.topbarSearchQuery) {
       this.filteredExtractedJobsGroups = this.extractedJobsGroups;
@@ -168,21 +159,21 @@ export class JobMatching implements OnInit {
       return {
         role: group.role,
         jobs: group.jobs.filter(job => 
-          this.includesText(job.title, this.topbarSearchQuery) ||
-          this.includesText(job.company_name, this.topbarSearchQuery) ||
-          this.includesText(job.location, this.topbarSearchQuery) ||
-          this.includesText(job.description, this.topbarSearchQuery)
+          job.title.toLowerCase().includes(this.topbarSearchQuery) ||
+          job.company_name.toLowerCase().includes(this.topbarSearchQuery) ||
+          job.location.toLowerCase().includes(this.topbarSearchQuery) ||
+          job.description.toLowerCase().includes(this.topbarSearchQuery)
         )
       };
     }).filter(group => group.jobs.length > 0);
 
     // Filter remapResults
     this.filteredRemapResults = this.remapResults.filter(job => 
-      this.includesText(job.title, this.topbarSearchQuery) ||
-      this.includesText(job.company_name, this.topbarSearchQuery) ||
-      this.includesText(job.location, this.topbarSearchQuery) ||
-      this.includesText(job.description, this.topbarSearchQuery) ||
-      this.includesText(job.remap_description, this.topbarSearchQuery)
+      job.title.toLowerCase().includes(this.topbarSearchQuery) ||
+      job.company_name.toLowerCase().includes(this.topbarSearchQuery) ||
+      job.location.toLowerCase().includes(this.topbarSearchQuery) ||
+      job.description.toLowerCase().includes(this.topbarSearchQuery) ||
+      job.remap_description?.toLowerCase().includes(this.topbarSearchQuery)
     );
 
     this.cdr.detectChanges();
@@ -194,7 +185,80 @@ export class JobMatching implements OnInit {
     'Brazil', 'Mexico', 'South Africa'
   ];
 
-
+  // Raw mock database before AI processing
+  private mockRawJobs: Job[] = [
+    {
+      job_id: 'job_001',
+      title: 'Software Engineer Intern',
+      company_name: 'TechCorp Solutions',
+      location: 'Kuala Lumpur, Malaysia',
+      salary: 'RM 3,000',
+      salary_parsed: { currency: 'RM', min_salary: 3000, pay_period: 'month' },
+      schedule_type: 'Full-time',
+      work_from_home: true,
+      description: 'We are looking for a passionate Software Engineer Intern to join our web team. You will work on building clean, high-performance user interfaces using Angular and TypeScript.',
+      key_responsibilities: [
+        'Collaborate with senior developers to design and implement new UI features.',
+        'Write robust, testable, and clean code.',
+        'Participate in code reviews and agile ceremonies.'
+      ],
+      core_skills: ['Angular', 'TypeScript', 'HTML5', 'CSS3'],
+      soft_skills: ['Teamwork', 'Communication', 'Problem Solving']
+    },
+    {
+      job_id: 'job_002',
+      title: 'Frontend Developer',
+      company_name: 'WebStudio Asia',
+      location: 'Selangor, Malaysia',
+      salary: 'RM 5,500',
+      salary_parsed: { currency: 'RM', min_salary: 5500, pay_period: 'month' },
+      schedule_type: 'Full-time',
+      work_from_home: false,
+      description: 'Join our creative studio as a Frontend Developer. You will turn beautiful Figma designs into interactive, high-quality web applications.',
+      key_responsibilities: [
+        'Translate Figma design mockups into pixel-perfect web pages.',
+        'Collaborate with UX/UI designers to improve user experience.',
+        'Ensure cross-browser compatibility and mobile responsiveness.'
+      ],
+      core_skills: ['JavaScript', 'HTML', 'CSS', 'Sass'],
+      soft_skills: ['Creative Thinking', 'Adaptability']
+    },
+    {
+      job_id: 'job_003',
+      title: 'Data Analyst Intern',
+      company_name: 'FinanceFlow Systems',
+      location: 'Singapore',
+      salary: 'S$ 1,500',
+      salary_parsed: { currency: 'S$', min_salary: 1500, pay_period: 'month' },
+      schedule_type: 'Internship',
+      work_from_home: false,
+      description: 'Looking for a Data Analyst Intern to help audit our financial data, preprocess raw transactions, and create analytics dashboards.',
+      key_responsibilities: [
+        'Collect and clean raw data from financial records.',
+        'Build automated dashboards for quarterly reports.'
+      ],
+      core_skills: ['Data Cleaning', 'Excel', 'Data Visualization'],
+      soft_skills: ['Analytical Mindset', 'Attention to Detail']
+    },
+    {
+      job_id: 'job_004',
+      title: 'Full Stack Engineer',
+      company_name: 'DevGroup Australia',
+      location: 'Sydney, Australia',
+      salary: 'A$ 85,000',
+      salary_parsed: { currency: 'A$', min_salary: 85000, pay_period: 'year' },
+      schedule_type: 'Full-time',
+      work_from_home: true,
+      description: 'DevGroup is hiring a Full Stack Developer to help build our cloud SaaS platforms, design schemas, and build backend APIs.',
+      key_responsibilities: [
+        'Develop robust server-side APIs.',
+        'Connect backend services with premium Angular dashboards.',
+        'Design database schemas and optimize query speeds.'
+      ],
+      core_skills: ['TypeScript', 'Node.js', 'Express', 'Angular'],
+      soft_skills: ['Self-management', 'Critical thinking']
+    }
+  ];
 
   get currencySymbol(): string {
     const currencyMap: { [key: string]: string } = {
@@ -236,20 +300,6 @@ export class JobMatching implements OnInit {
     this.cdr.detectChanges();
   }
 
-  private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 45000) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      return await fetch(url, {
-        ...options,
-        signal: controller.signal
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
   async onSubmit() {
     if (!this.country) {
       alert('Please select a country.');
@@ -260,7 +310,6 @@ export class JobMatching implements OnInit {
     this.isLoading = true;
     this.isEnhancing = false;
     this.isScoring = false;
-    this.searchError = null;
     this.extractedJobsGroups = [];
     this.remapResults = [];
     this.currentTab = 'search';
@@ -303,7 +352,7 @@ export class JobMatching implements OnInit {
       if (this.searchQuery) formData.append('search_query', this.searchQuery);
       if (file) formData.append('file', file);
 
-      const searchRes = await this.fetchWithTimeout(`${this.apiBase}/api/v1/search-initial-jobs`, {
+      const searchRes = await fetch(`${environment.backendUrl}/api/v1/search-initial-jobs`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -348,14 +397,14 @@ export class JobMatching implements OnInit {
       
       const extractionPromises = rawJobs.map(async (job) => {
         try {
-          const extractRes = await this.fetchWithTimeout(`${this.apiBase}/api/v1/extract-single-job`, {
+          const extractRes = await fetch(`${environment.backendUrl}/api/v1/extract-single-job`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ raw_job: job })
-          }, 60000);
+          });
 
           if (!extractRes.ok) {
             throw new Error('Extraction failed');
@@ -384,7 +433,7 @@ export class JobMatching implements OnInit {
       this.cdr.detectChanges();
 
       // 5. Trigger ReMAP sorting & Scoring
-      const remapRes = await this.fetchWithTimeout(`${this.apiBase}/api/v1/remap-and-sort-jobs`, {
+      const remapRes = await fetch(`${environment.backendUrl}/api/v1/remap-and-sort-jobs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -414,52 +463,12 @@ export class JobMatching implements OnInit {
 
     } catch (err: any) {
       console.error('Error during job matching process:', err);
-      this.searchError = 'AI service is taking longer than expected or encountered an error. You may retry or view a sample recommendation.';
+      alert('An error occurred during job matching: ' + err.message);
       this.isLoading = false;
       this.isEnhancing = false;
       this.isScoring = false;
       this.cdr.detectChanges();
     }
-  }
-
-  loadSampleFallback() {
-    this.searchError = null;
-    this.isLoading = false;
-    this.isEnhancing = false;
-    this.isScoring = false;
-    this.hasSearched = true;
-    
-    const sampleResult: Job = {
-      job_id: 'sample_001',
-      is_fallback_sample: true,
-      title: 'Software Engineer Intern',
-      company_name: 'DemoTech Solutions',
-      location: 'Kuala Lumpur / Remote Hybrid',
-      description: 'DemoTech Solutions is looking for a motivated Software Engineer Intern to help build next-generation AI-powered products. You will gain hands-on experience in full-stack development, API integration, and database management.',
-      key_responsibilities: [
-        'Assist in developing and maintaining web applications.',
-        'Integrate backend APIs with frontend UI components.',
-        'Write clean, readable, and well-documented code.'
-      ],
-      core_skills: ['JavaScript', 'TypeScript', 'React/Angular', 'REST APIs'],
-      soft_skills: ['Problem Solving', 'Team Collaboration'],
-      logical_match_score: 86,
-      remap_description: 'Candidate has experience in frontend development and full-stack academic projects. Candidate understands basic backend API and database integration. Candidate has AI-related project exposure, which aligns with modern software internship expectations.',
-      unmatched_mandatory_skills: ['Docker', 'Cloud deployment', 'Unit testing', 'CI/CD fundamentals'],
-      unmatched_responsibilities: [],
-      matched_optional_skills: [],
-      recommended_actions: [
-        'Add deployment experience to the resume.',
-        'Build one Dockerized full-stack project.',
-        'Practice REST API testing and error handling.',
-        'Prepare examples of teamwork and problem-solving for interviews.'
-      ]
-    };
-    
-    this.remapResults = [sampleResult];
-    this.currentTab = 'recommendations';
-    this.filterJobs();
-    this.cdr.detectChanges();
   }
 
   private updateJobInGroups(updatedJob: Job) {

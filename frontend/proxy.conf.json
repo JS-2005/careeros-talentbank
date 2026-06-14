@@ -1,9 +1,0 @@
-{
-  "/_/backend": {
-    "target": "http://localhost:8000",
-    "secure": false,
-    "pathRewrite": {
-      "^/_/backend": ""
-    }
-  }
-}

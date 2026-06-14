@@ -126,57 +126,6 @@
   object-fit: cover;
 }
 
-/* Avatar Upload Interaction */
-.avatar-upload-trigger {
-  cursor: pointer;
-  position: relative;
-}
-
-.avatar-upload-overlay {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.avatar-upload-overlay i {
-  font-size: 28px;
-  color: white;
-}
-
-.avatar-upload-trigger:hover .avatar-upload-overlay,
-.avatar-upload-overlay.active {
-  opacity: 1;
-}
-
-.btn-avatar-remove {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  transition: all 0.2s;
-}
-
-.btn-avatar-remove:hover {
-  border-color: var(--danger);
-  color: var(--danger);
-  background: var(--danger-light);
-}
-
 .user-info {
   width: 100%;
   margin-bottom: 24px;
