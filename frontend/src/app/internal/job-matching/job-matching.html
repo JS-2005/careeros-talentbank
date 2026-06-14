@@ -57,12 +57,6 @@
       </div>
 
       <form (ngSubmit)="onSubmit()" #matcherForm="ngForm" class="search-form-layout">
-        <!-- Job Title -->
-        <div class="input-wrapper">
-          <i class="bx bx-briefcase input-icon"></i>
-          <input type="text" id="searchQuery" name="searchQuery" [(ngModel)]="searchQuery"
-            placeholder="Job Title (or leave blank for AI match)" class="form-input" [disabled]="!profileResumeUrl" />
-        </div>
 
         <!-- Country -->
         <div class="input-wrapper">

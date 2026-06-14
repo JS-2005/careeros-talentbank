@@ -115,7 +115,6 @@ export class JobMatching implements OnInit {
   }
 
   // Search filter states
-  searchQuery = '';
   country = 'Malaysia';
   state = '';
   expectedSalary = 0;
@@ -292,7 +291,6 @@ export class JobMatching implements OnInit {
     this.extractedJobsGroups = [];
     this.remapResults = [];
     this.currentTab = 'search';
-    this.searchQuery = '';
     this.expectedSalary = 0;
     this.state = '';
     this.topbarSearchQuery = '';
@@ -349,7 +347,6 @@ export class JobMatching implements OnInit {
       if (this.state) formData.append('state', this.state);
       formData.append('is_intern', String(this.isIntern));
       if (this.expectedSalary > 0) formData.append('expected_salary', String(this.expectedSalary));
-      if (this.searchQuery) formData.append('search_query', this.searchQuery);
       if (file) formData.append('file', file);
 
       const searchRes = await fetch(`${environment.backendUrl}/api/v1/search-initial-jobs`, {
