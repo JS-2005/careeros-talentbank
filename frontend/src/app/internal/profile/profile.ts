@@ -28,6 +28,7 @@ export class Profile implements OnInit {
     social_media_url: [] as string[],
     resume_url: '',
     interest_area: [] as string[],
+    avatar_url: '',
     first_time_login: true
   };
 
@@ -72,8 +73,12 @@ export class Profile implements OnInit {
           social_media_url: data.social_media_url || [],
           resume_url: data.resume_url || '',
           interest_area: data.interest_area || [],
+          avatar_url: data.avatar_url || '',
           first_time_login: data.first_time_login ?? true
         };
+        if (data.avatar_url) {
+          this.googleAvatarUrl = data.avatar_url;
+        }
       } else {
         // Fallback to Google user metadata
         const metadata = currentUser.user_metadata || {};
@@ -81,6 +86,7 @@ export class Profile implements OnInit {
         this.profile.full_name = fallbackName;
         this.profile.social_media_url = [];
         this.profile.interest_area = ['Full-Stack', 'Web Development'];
+        this.profile.avatar_url = this.googleAvatarUrl;
         this.profile.first_time_login = true;
       }
     } catch (err: any) {
@@ -125,6 +131,7 @@ export class Profile implements OnInit {
         social_media_url: this.profile.social_media_url,
         resume_url: this.profile.resume_url?.trim() || null,
         interest_area: this.profile.interest_area,
+        avatar_url: this.profile.avatar_url || null,
         first_time_login: false
       };
 
@@ -156,8 +163,12 @@ export class Profile implements OnInit {
           social_media_url: response.data.social_media_url || [],
           resume_url: response.data.resume_url || '',
           interest_area: response.data.interest_area || [],
+          avatar_url: response.data.avatar_url || '',
           first_time_login: response.data.first_time_login ?? false
         };
+        if (response.data.avatar_url) {
+          this.googleAvatarUrl = response.data.avatar_url;
+        }
         this.successMessage = 'Profile saved successfully!';
         this.isEditMode = false;
         this.cdr.detectChanges();

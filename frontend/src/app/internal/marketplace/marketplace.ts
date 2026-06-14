@@ -64,15 +64,18 @@ export class Marketplace implements OnInit {
       // 2. Fetch profiles to map names and avatars
       const { data: profilesData, error: profilesError } = await this.authService.supabaseClient
         .from('profiles')
-        .select('auth_id, full_name');
+        .select('auth_id, full_name, avatar_url');
 
       if (profilesError) throw profilesError;
 
-      const profileMap = new Map<string, string>();
+      const profileMap = new Map<string, { name: string; avatarUrl: string }>();
       if (profilesData) {
         profilesData.forEach(p => {
           if (p.auth_id) {
-            profileMap.set(p.auth_id, p.full_name || 'User');
+            profileMap.set(p.auth_id, {
+              name: p.full_name || 'User',
+              avatarUrl: p.avatar_url || ''
+            });
           }
         });
       }
@@ -83,7 +86,9 @@ export class Marketplace implements OnInit {
 
       if (postsData) {
         postsData.forEach((post: any) => {
-          const authorName = profileMap.get(post.auth_id) || 'User';
+          const authorProfile = profileMap.get(post.auth_id);
+          const authorName = authorProfile?.name || 'User';
+          const authorAvatar = authorProfile?.avatarUrl || '';
           const timeFormatted = this.formatRelativeTime(post.created_at);
 
           if (post.post_type === 'normal') {
@@ -93,6 +98,7 @@ export class Marketplace implements OnInit {
               id: post.id,
               type: 'post',
               user: authorName,
+              userAvatar: authorAvatar,
               userRole: 'Community Member',
               postedTime: timeFormatted,
               text: content,
@@ -115,6 +121,7 @@ export class Marketplace implements OnInit {
               type: 'job',
               company: authorName,
               user: authorName,
+              userAvatar: authorAvatar,
               companyLogo: authorName.charAt(0).toUpperCase() || 'C',
               postedTime: timeFormatted,
               urgent: urgent,
@@ -152,6 +159,7 @@ export class Marketplace implements OnInit {
               id: post.id,
               type: 'event',
               user: authorName,
+              userAvatar: authorAvatar,
               userRole: 'Event Organizer',
               postedTime: timeFormatted,
               title: title,

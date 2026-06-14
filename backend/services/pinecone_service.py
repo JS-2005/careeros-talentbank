@@ -227,7 +227,7 @@ def search_match_job(skills_query: str, experience_queries: list, years_of_exper
             top_k=20,
             inputs={"text": skills_query},
             filter=skills_filter,
-            rerank={"model":"bge-reranker-v2-m3", "top_n": 10, "rank_fields": ["chunk_text"]}
+            rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
         )
         hits = extract_hits(skills_result)
         all_hit_lists.append(hits)

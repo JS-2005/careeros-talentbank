@@ -98,6 +98,7 @@ export class FirstLogin implements OnInit {
         social_media_url: this.profile.social_media_url,
         interest_area: this.profile.interest_area,
         resume_url: this.profile.resume_url.trim() || null,
+        avatar_url: this.googleAvatarUrl || null,
         first_time_login: false
       };
 
@@ -186,13 +187,21 @@ export class FirstLogin implements OnInit {
     if (!input.files || input.files.length === 0) return;
     
     const file = input.files[0];
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+
+    if (fileExt !== 'pdf') {
+      this.errorMessage = 'Only PDF files are allowed.';
+      input.value = '';
+      this.cdr.detectChanges();
+      return;
+    }
+
     this.resumeFileName = file.name;
     this.uploadingResume = true;
     this.errorMessage = '';
     this.cdr.detectChanges();
 
     try {
-      const fileExt = file.name.split('.').pop();
       const fileName = `${this.profile.auth_id}-${Date.now()}.${fileExt}`;
       
       const { data, error } = await this.authService.supabaseClient.storage

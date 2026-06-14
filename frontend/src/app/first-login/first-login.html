@@ -123,7 +123,7 @@
                         <p class="stage-desc">Upload your resume document so recruiters can download your credentials.</p>
 
                         <div class="resume-upload-box">
-                            <input #fileInput type="file" (change)="onFileSelected($event)" accept=".pdf,.doc,.docx" style="display: none;" />
+                            <input #fileInput type="file" (change)="onFileSelected($event)" accept="application/pdf,.pdf" style="display: none;" />
                             
                             @if (uploadingResume) {
                                 <div class="file-preview-card flex-center loading-upload">
@@ -147,7 +147,7 @@
                                 <div class="file-preview-card flex-center empty-file cursor-pointer" (click)="fileInput.click()">
                                     <i class='bx bx-cloud-upload file-preview-icon'></i>
                                     <span class="file-preview-name">Click to upload your resume</span>
-                                    <p class="input-desc">Accepts PDF, DOC, or DOCX up to 10MB</p>
+                                    <p class="input-desc">Accepts PDF up to 10MB</p>
                                 </div>
                             }
                         </div>
