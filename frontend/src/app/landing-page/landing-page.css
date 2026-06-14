@@ -136,8 +136,7 @@ p { line-height: 1.6; color: var(--text-muted); }
 
 .hero-image-container { flex: 1; display: flex; justify-content: center; }
 .mockup-placeholder {
-  width: 100%; aspect-ratio: 1/1;
-  background-color: #2F4C63; /* Image background color approx */
+  width: 100%;
   border-radius: 12px;
   box-shadow: 0 20px 40px rgba(0,0,0,0.1);
 }
