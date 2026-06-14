@@ -166,7 +166,7 @@
                     <div class="resume-content">
                         @if (isEditMode) {
                             <div class="resume-upload-wrapper">
-                                <input #profileFileInput type="file" (change)="onFileSelected($event)" accept=".pdf,.doc,.docx" style="display: none;" />
+                                <input #profileFileInput type="file" (change)="onFileSelected($event)" accept="application/pdf,.pdf" style="display: none;" />
                                 
                                 @if (uploadingResume) {
                                     <div class="resume-file-box flex-center text-center loading-upload">
@@ -183,7 +183,7 @@
                                     <div class="resume-file-box flex-center text-center empty-resume cursor-pointer" (click)="profileFileInput.click()">
                                         <i class='bx bx-cloud-upload file-icon'></i>
                                         <p>Click to upload your resume</p>
-                                        <span class="file-format-desc">PDF, DOC, DOCX up to 10MB</span>
+                                        <span class="file-format-desc">PDF up to 10MB</span>
                                     </div>
                                 }
                             </div>

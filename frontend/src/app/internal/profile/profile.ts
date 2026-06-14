@@ -224,12 +224,20 @@ export class Profile implements OnInit {
     if (!input.files || input.files.length === 0) return;
     
     const file = input.files[0];
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+
+    if (fileExt !== 'pdf') {
+      this.errorMessage = 'Only PDF files are allowed.';
+      input.value = '';
+      this.cdr.detectChanges();
+      return;
+    }
+
     this.uploadingResume = true;
     this.errorMessage = '';
     this.cdr.detectChanges();
 
     try {
-      const fileExt = file.name.split('.').pop();
       const fileName = `${this.profile.auth_id}-${Date.now()}.${fileExt}`;
       
       const { data, error } = await this.authService.supabaseClient.storage
