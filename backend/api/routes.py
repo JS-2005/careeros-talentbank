@@ -243,30 +243,108 @@ async def get_saved_jobs(supabase: Client = Depends(get_supabase_client)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving saved jobs: {str(e)}")
 
-class WebRTCOfferRequest(BaseModel):
-    sdp: str
-    type: str
+from services.interview_session_service import (
+    start_session,
+    process_user_answer,
+    get_or_create_session_queue,
+    cleanup_session,
+    reset_interview_files,
+    read_file_content,
+    _get_transcript,
+    _get_walkthrough,
+    TRANSCRIPT_PATH,
+    WALKTHROUGH_PATH,
+)
+from starlette.responses import StreamingResponse
+import json as _json
+
+
+class StartSessionRequest(BaseModel):
     user_interview_id: str
 
-from services.webrtc_service import handle_webrtc_offer, reset_interview_files, read_file_content, TRANSCRIPT_PATH, WALKTHROUGH_PATH
 
-@router.post("/webrtc/offer")
-async def webrtc_offer(payload: WebRTCOfferRequest):
+class UserResponseRequest(BaseModel):
+    user_interview_id: str
+    text: str
+    diagram_url: str | None = None
+
+
+@router.post("/interview/start-session")
+async def interview_start_session(payload: StartSessionRequest):
+    """Start an interview session — loads questions and pushes the first question via SSE."""
     try:
-        answer = await handle_webrtc_offer(
-            sdp=payload.sdp,
-            offer_type=payload.type,
-            user_interview_id=payload.user_interview_id
-        )
-        return answer
+        # Ensure queue exists before kicking off the async task
+        get_or_create_session_queue(payload.user_interview_id)
+        asyncio.create_task(start_session(payload.user_interview_id))
+        return {"status": "ok", "message": "Session starting"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"WebRTC signaling failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start session: {str(e)}")
+
+
+@router.post("/interview/respond")
+async def interview_respond(payload: UserResponseRequest):
+    """Submit a user answer — processes and pushes AI reply via SSE."""
+    try:
+        asyncio.create_task(
+            process_user_answer(
+                user_interview_id=payload.user_interview_id,
+                raw_text=payload.text,
+                diagram_url=payload.diagram_url,
+            )
+        )
+        return {"status": "ok", "message": "Response received"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process response: {str(e)}")
+
+
+@router.get("/interview/events/{user_interview_id}")
+async def interview_events(user_interview_id: str):
+    """Server-Sent Events stream for pushing real-time interview messages to the frontend."""
+
+    async def event_generator():
+        queue = get_or_create_session_queue(user_interview_id)
+
+        # Send an initial connection-confirmed event
+        yield f"data: {_json.dumps({'type': 'connected', 'message': 'SSE connection established'})}\n\n"
+
+        try:
+            while True:
+                try:
+                    # Wait for a message with a 30-second timeout (acts as keep-alive interval)
+                    message = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield f"data: {_json.dumps(message)}\n\n"
+
+                    # If report is ready or there's a terminal error, close the stream
+                    if message.get("type") in ("report_ready",):
+                        break
+                except asyncio.TimeoutError:
+                    # Send a keep-alive comment to prevent connection timeout
+                    yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            cleanup_session(user_interview_id)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 @router.get("/meeting-room/files")
-async def get_meeting_files():
+async def get_meeting_files(user_interview_id: str = ""):
     try:
-        transcript = read_file_content(TRANSCRIPT_PATH)
-        walkthrough = read_file_content(WALKTHROUGH_PATH)
+        if user_interview_id:
+            transcript = _get_transcript(user_interview_id)
+            walkthrough = _get_walkthrough(user_interview_id)
+        else:
+            transcript = read_file_content(TRANSCRIPT_PATH)
+            walkthrough = read_file_content(WALKTHROUGH_PATH)
         return {
             "transcript": transcript,
             "walkthrough": walkthrough
@@ -275,9 +353,9 @@ async def get_meeting_files():
         raise HTTPException(status_code=500, detail=f"Failed to read meeting files: {str(e)}")
 
 @router.post("/meeting-room/reset")
-async def reset_meeting_files():
+async def reset_meeting_files(user_interview_id: str = "default"):
     try:
-        reset_interview_files()
+        reset_interview_files(user_interview_id)
         return {"status": "success", "message": "Files reset successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reset meeting files: {str(e)}")

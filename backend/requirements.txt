@@ -11,4 +11,3 @@ supabase
 aiolimiter
 pytest
 httpx
-aiortc

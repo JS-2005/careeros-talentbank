@@ -23,9 +23,8 @@ export class MeetingRoom implements OnInit, OnDestroy {
   googleAvatarUrl = '';
   userName = 'User';
 
-  // WebRTC
-  private pc: RTCPeerConnection | null = null;
-  private dataChannel: RTCDataChannel | null = null;
+  // SSE Connection
+  private eventSource: EventSource | null = null;
   webrtcStatus: 'connecting' | 'connected' | 'disconnected' | 'failed' = 'connecting';
   statusMessage = 'Initializing meeting room...';
 
@@ -108,7 +107,7 @@ export class MeetingRoom implements OnInit, OnDestroy {
     if (this.userInterviewId) {
       await this.loadInterviewData();
       await this.startCamera();
-      await this.setupWebRTC();
+      this.setupSSE();
     } else {
       this.statusMessage = 'No interview ID found.';
       this.isLoading = false;
@@ -180,104 +179,26 @@ export class MeetingRoom implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  async setupWebRTC() {
-    try {
-      this.webrtcStatus = 'connecting';
-      this.statusMessage = 'Connecting to WebRTC gateway...';
-      this.cdr.detectChanges();
+  setupSSE() {
+    this.webrtcStatus = 'connecting';
+    this.statusMessage = 'Connecting to interview server...';
+    this.cdr.detectChanges();
 
-      this.pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
+    const sseUrl = `${environment.backendUrl}/api/v1/interview/events/${this.userInterviewId}`;
+    this.eventSource = new EventSource(sseUrl);
 
-      // Handle ICE Connection State Changes
-      this.pc.oniceconnectionstatechange = () => {
-        if (!this.pc) return;
-        const state = this.pc.iceConnectionState;
-        console.log('WebRTC ICE State:', state);
-        if (state === 'connected') {
-          this.webrtcStatus = 'connected';
-          this.statusMessage = 'Connected. Waiting for AI...';
-        } else if (state === 'disconnected') {
-          this.webrtcStatus = 'disconnected';
-          this.statusMessage = 'Disconnected from server.';
-        } else if (state === 'failed') {
-          this.webrtcStatus = 'failed';
-          this.statusMessage = 'Connection failed. Please retry.';
-        }
-        this.cdr.detectChanges();
-      };
-
-      // Create DataChannel (Client-side initiated)
-      this.dataChannel = this.pc.createDataChannel('chat');
-      this.setupDataChannelListeners();
-
-      // Create offer
-      const offer = await this.pc.createOffer();
-      await this.pc.setLocalDescription(offer);
-
-      // Wait for complete ICE gathering
-      await new Promise<void>((resolve) => {
-        if (!this.pc) return resolve();
-        if (this.pc.iceGatheringState === 'complete') {
-          resolve();
-        } else {
-          const checkState = () => {
-            if (this.pc && this.pc.iceGatheringState === 'complete') {
-              this.pc.removeEventListener('icegatheringstatechange', checkState);
-              resolve();
-            }
-          };
-          this.pc.addEventListener('icegatheringstatechange', checkState);
-        }
-      });
-
-      // Post offer to Python Backend
-      const offerPayload = {
-        sdp: this.pc.localDescription?.sdp || '',
-        type: this.pc.localDescription?.type || 'offer',
-        user_interview_id: this.userInterviewId
-      };
-
-      const response = await fetch(`${environment.backendUrl}/api/v1/webrtc/offer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(offerPayload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Signaling server error: ${response.statusText}`);
-      }
-
-      const answer = await response.json();
-      await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
-
-    } catch (err: any) {
-      console.error('Error negotiating WebRTC connection:', err);
-      this.webrtcStatus = 'failed';
-      this.statusMessage = `Failed to connect: ${err.message}`;
-      this.cdr.detectChanges();
-    }
-  }
-
-  setupDataChannelListeners() {
-    if (!this.dataChannel) return;
-
-    this.dataChannel.onopen = () => {
-      console.log('WebRTC Data Channel Open');
-      this.statusMessage = 'Session established. Click Start Practice.';
-      this.cdr.detectChanges();
-      
-      // Auto-start session
-      this.startInterviewSession();
-    };
-
-    this.dataChannel.onmessage = (event) => {
+    this.eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('Received Message from Backend:', data);
+        console.log('Received SSE Message:', data);
 
-        if (data.type === 'status') {
+        if (data.type === 'connected') {
+          this.webrtcStatus = 'connected';
+          this.statusMessage = 'Connected. Starting session...';
+          this.cdr.detectChanges();
+          // Auto-start session once SSE is connected
+          this.startInterviewSession();
+        } else if (data.type === 'status') {
           this.statusMessage = data.message;
           this.cdr.detectChanges();
         } else if (data.type === 'first_question') {
@@ -287,7 +208,7 @@ export class MeetingRoom implements OnInit, OnDestroy {
           this.transcriptMarkdown = data.transcript || '';
           this.walkthroughMarkdown = data.walkthrough || '';
           this.statusMessage = 'Speaking question...';
-          
+
           // Handle diagram tool auto popup
           const isDiag = data.diagram_tool || false;
           this.toggleDiagramTool(isDiag);
@@ -309,7 +230,7 @@ export class MeetingRoom implements OnInit, OnDestroy {
             if (data.next_question) {
               this.currentQuestionText = data.next_question;
               this.currentQuestionIndex = data.next_index;
-              
+
               // Handle diagram tool auto popup
               const isDiag = data.diagram_tool || false;
               this.toggleDiagramTool(isDiag);
@@ -342,23 +263,37 @@ export class MeetingRoom implements OnInit, OnDestroy {
           this.cdr.detectChanges();
         }
       } catch (err) {
-        console.error('Error parsing data channel message:', err);
+        console.error('Error parsing SSE message:', err);
       }
     };
 
-    this.dataChannel.onclose = () => {
-      console.log('WebRTC Data Channel Closed');
+    this.eventSource.onerror = (err) => {
+      console.error('SSE connection error:', err);
       this.webrtcStatus = 'disconnected';
-      this.statusMessage = 'Interview session disconnected.';
+      this.statusMessage = 'Disconnected from server. Reconnecting...';
       this.cdr.detectChanges();
     };
   }
 
-  startInterviewSession() {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+  async startInterviewSession() {
+    try {
       this.isWaitingForAi = true;
       this.statusMessage = 'Starting interview session...';
-      this.dataChannel.send(JSON.stringify({ type: 'start_session' }));
+      this.cdr.detectChanges();
+
+      const response = await fetch(`${environment.backendUrl}/api/v1/interview/start-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_interview_id: this.userInterviewId })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start session: ${response.statusText}`);
+      }
+    } catch (err: any) {
+      console.error('Error starting interview session:', err);
+      this.statusMessage = `Failed to start: ${err.message}`;
+      this.isWaitingForAi = false;
       this.cdr.detectChanges();
     }
   }
@@ -501,32 +436,43 @@ export class MeetingRoom implements OnInit, OnDestroy {
     }
   }
 
-  submitAnswer() {
+  async submitAnswer() {
     this.stopRecording();
-    
+
     if (!this.currentResponseText.trim()) {
       return;
     }
 
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      // Cancel speech synthesis if active
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
+    // Cancel speech synthesis if active
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
 
-      this.isWaitingForAi = true;
-      this.statusMessage = 'AI is polishing your response and evaluating...';
-      
-      this.dataChannel.send(JSON.stringify({
-        type: 'user_response',
-        text: this.currentResponseText
-      }));
+    this.isWaitingForAi = true;
+    this.statusMessage = 'AI is polishing your response and evaluating...';
+
+    try {
+      const response = await fetch(`${environment.backendUrl}/api/v1/interview/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_interview_id: this.userInterviewId,
+          text: this.currentResponseText
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to submit answer: ${response.statusText}`);
+      }
 
       this.currentResponseText = '';
       this.accumulatedTranscript = '';
       this.cdr.detectChanges();
-    } else {
-      alert('WebRTC session is disconnected. Try refreshing.');
+    } catch (err: any) {
+      console.error('Error submitting answer:', err);
+      alert('Failed to send response. Try refreshing.');
+      this.isWaitingForAi = false;
+      this.cdr.detectChanges();
     }
   }
 
@@ -612,14 +558,10 @@ export class MeetingRoom implements OnInit, OnDestroy {
     // Close speech recognition
     this.stopRecording();
 
-    // Close WebRTC connection
-    if (this.dataChannel) {
-      this.dataChannel.close();
-      this.dataChannel = null;
-    }
-    if (this.pc) {
-      this.pc.close();
-      this.pc = null;
+    // Close SSE connection
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
     }
   }
 
@@ -949,28 +891,37 @@ export class MeetingRoom implements OnInit, OnDestroy {
       return;
     }
 
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
 
-      this.isWaitingForAi = true;
-      this.statusMessage = 'AI is polishing your response and evaluating...';
-      
-      const responseText = this.currentResponseText.trim() || 'See attached diagram for my design solution.';
-      
-      this.dataChannel.send(JSON.stringify({
-        type: 'user_response',
-        text: responseText,
-        diagram_url: diagramUrl
-      }));
+    this.isWaitingForAi = true;
+    this.statusMessage = 'AI is polishing your response and evaluating...';
+
+    const responseText = this.currentResponseText.trim() || 'See attached diagram for my design solution.';
+
+    try {
+      const response = await fetch(`${environment.backendUrl}/api/v1/interview/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_interview_id: this.userInterviewId,
+          text: responseText,
+          diagram_url: diagramUrl
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to submit: ${response.statusText}`);
+      }
 
       this.showDiagramTool = false;
       this.currentResponseText = '';
       this.accumulatedTranscript = '';
       this.cdr.detectChanges();
-    } else {
-      alert('WebRTC session is disconnected. Try refreshing.');
+    } catch (err: any) {
+      console.error('Error submitting answer with diagram:', err);
+      alert('Failed to send response. Try refreshing.');
       this.isWaitingForAi = false;
       this.cdr.detectChanges();
     }

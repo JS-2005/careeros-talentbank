@@ -1,7 +1,6 @@
 import os
 import json
 import asyncio
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
 from services.supabase_service import _get_supabase
 from services.AI_extract_service import get_llm
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -15,60 +14,69 @@ TRANSCRIPT_PATH = os.path.join(FRONTEND_DIR, "src", "app", "meeting-room", "tran
 WALKTHROUGH_PATH = os.path.join(FRONTEND_DIR, "src", "app", "meeting-room", "interview-walkthrough.md")
 
 # Active interview sessions keyed by user_interview_id
+# Each session stores: questions, current_index, queue, user_name, track_title
 active_sessions = {}
 
-# Keep track of active connections to clean up later
-pcs = set()
-
 # In-memory fallback storage for transcript/walkthrough on ephemeral filesystems (e.g. Render)
-_in_memory_transcript = "# Interview Transcript\n\n"
-_in_memory_walkthrough = "# Interview Walkthrough\n\n"
+_in_memory_transcripts = {}  # keyed by user_interview_id
+_in_memory_walkthroughs = {}  # keyed by user_interview_id
+
+DEFAULT_TRANSCRIPT = "# Interview Transcript\n\n"
+DEFAULT_WALKTHROUGH = "# Interview Walkthrough\n\n"
+
+
+def _get_transcript(session_id: str) -> str:
+    return _in_memory_transcripts.get(session_id, DEFAULT_TRANSCRIPT)
+
+
+def _get_walkthrough(session_id: str) -> str:
+    return _in_memory_walkthroughs.get(session_id, DEFAULT_WALKTHROUGH)
+
 
 def read_file_content(file_path: str) -> str:
     """Read contents of a file if it exists, falling back to in-memory storage."""
-    global _in_memory_transcript, _in_memory_walkthrough
     if os.path.exists(file_path):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
             print(f"Error reading file {file_path}: {e}")
-    # Fallback to in-memory content (for ephemeral filesystems like Render)
+    # Fallback to default for ephemeral filesystems
     if file_path == TRANSCRIPT_PATH:
-        return _in_memory_transcript
+        return DEFAULT_TRANSCRIPT
     elif file_path == WALKTHROUGH_PATH:
-        return _in_memory_walkthrough
+        return DEFAULT_WALKTHROUGH
     return ""
 
-def reset_interview_files():
-    """Clear or initialize transcript.md and interview-walkthrough.md."""
-    global _in_memory_transcript, _in_memory_walkthrough
-    _in_memory_transcript = "# Interview Transcript\n\n"
-    _in_memory_walkthrough = "# Interview Walkthrough\n\n"
+
+def reset_interview_files(session_id: str):
+    """Clear or initialize transcript and walkthrough for a session."""
+    _in_memory_transcripts[session_id] = DEFAULT_TRANSCRIPT
+    _in_memory_walkthroughs[session_id] = DEFAULT_WALKTHROUGH
     os.makedirs(os.path.dirname(TRANSCRIPT_PATH), exist_ok=True)
     try:
         with open(TRANSCRIPT_PATH, "w", encoding="utf-8") as f:
-            f.write(_in_memory_transcript)
+            f.write(DEFAULT_TRANSCRIPT)
         with open(WALKTHROUGH_PATH, "w", encoding="utf-8") as f:
-            f.write(_in_memory_walkthrough)
+            f.write(DEFAULT_WALKTHROUGH)
         print("Initialized transcript.md and interview-walkthrough.md")
     except Exception as e:
         print(f"Error initializing files (best-effort on ephemeral FS): {e}")
 
-def append_to_transcript(speaker: str, text: str):
-    """Append a dialogue turn to transcript.md."""
-    global _in_memory_transcript
+
+def append_to_transcript(session_id: str, speaker: str, text: str):
+    """Append a dialogue turn to transcript."""
     entry = f"**{speaker}**: {text}\n\n"
-    _in_memory_transcript += entry
+    _in_memory_transcripts[session_id] = _in_memory_transcripts.get(session_id, DEFAULT_TRANSCRIPT) + entry
     try:
         with open(TRANSCRIPT_PATH, "a", encoding="utf-8") as f:
             f.write(entry)
     except Exception as e:
         print(f"Error appending to transcript.md (in-memory fallback active): {e}")
 
-def append_to_walkthrough(question_text: str, category: str, difficulty: str, response: str, diagram_url: str = None):
-    """Append question and candidate answer details to interview-walkthrough.md."""
-    global _in_memory_walkthrough
+
+def append_to_walkthrough(session_id: str, question_text: str, category: str, difficulty: str, response: str, diagram_url: str = None):
+    """Append question and candidate answer details to walkthrough."""
     entry = f"### Question: {question_text}\n"
     entry += f"* **Category**: {category.capitalize()}\n"
     entry += f"* **Difficulty**: {difficulty.capitalize()}\n\n"
@@ -76,36 +84,58 @@ def append_to_walkthrough(question_text: str, category: str, difficulty: str, re
     if diagram_url:
         entry += f"**Candidate Diagram**:\n![Candidate Diagram]({diagram_url})\n\n"
     entry += "---\n\n"
-    _in_memory_walkthrough += entry
+    _in_memory_walkthroughs[session_id] = _in_memory_walkthroughs.get(session_id, DEFAULT_WALKTHROUGH) + entry
     try:
         with open(WALKTHROUGH_PATH, "a", encoding="utf-8") as f:
             f.write(entry)
     except Exception as e:
         print(f"Error appending to interview-walkthrough.md (in-memory fallback active): {e}")
 
+
+def send_to_client(session_id: str, message: dict):
+    """Push a message to the client via the session's asyncio queue."""
+    session = active_sessions.get(session_id)
+    if session and "queue" in session:
+        try:
+            session["queue"].put_nowait(message)
+        except asyncio.QueueFull:
+            print(f"WARNING: Message queue full for session {session_id}, dropping message")
+    else:
+        print(f"WARNING: No active session/queue for {session_id}")
+
+
+def get_or_create_session_queue(session_id: str) -> asyncio.Queue:
+    """Get or create the message queue for a session."""
+    if session_id not in active_sessions:
+        active_sessions[session_id] = {"queue": asyncio.Queue(maxsize=100)}
+    elif "queue" not in active_sessions[session_id]:
+        active_sessions[session_id]["queue"] = asyncio.Queue(maxsize=100)
+    return active_sessions[session_id]["queue"]
+
+
 async def get_interview_questions(user_interview_id: str):
     """Load questions list from supabase for a user_interview_id with transient error retry logic."""
     loop = asyncio.get_event_loop()
-    
+
     def _fetch():
         supabase = _get_supabase()
-        
+
         # 1. Fetch user_interview record
         res_ui = supabase.table("user_interview").select("*").eq("id", user_interview_id).single().execute()
         user_interview = res_ui.data
         if not user_interview:
             raise ValueError(f"User interview record with ID {user_interview_id} not found")
-        
+
         interview_id = user_interview.get("interview_id")
-        
+
         # 2. Fetch ai-interview record
         res_ai = supabase.table("ai-interview").select("*").eq("id", interview_id).single().execute()
         ai_interview = res_ai.data
         if not ai_interview:
             raise ValueError(f"AI interview track with ID {interview_id} not found")
-            
+
         return ai_interview.get("interview_question", [])
-        
+
     for attempt in range(3):
         try:
             return await loop.run_in_executor(None, _fetch)
@@ -115,11 +145,12 @@ async def get_interview_questions(user_interview_id: str):
             print(f"Fetch questions failed (attempt {attempt + 1}/3): {e}. Retrying in 1s...")
             await asyncio.sleep(1)
 
+
 async def polish_user_response(raw_text: str) -> str:
     """Polishes raw transcribed user speech using Gemma-4-31B."""
     if not raw_text.strip():
         return "No response provided."
-    
+
     llm = get_llm()
     system_msg = SystemMessage(
         content="You are a text-polishing AI. The user is transcribing their voice response in a live interview. "
@@ -133,6 +164,7 @@ async def polish_user_response(raw_text: str) -> str:
     except Exception as e:
         print(f"Error polishing response with Gemma: {e}")
         return raw_text
+
 
 async def generate_ai_reply(question_text: str, user_response: str) -> str:
     """Generates real-time professional reply / follow-up to user response using Gemma-4-31B."""
@@ -153,7 +185,8 @@ async def generate_ai_reply(question_text: str, user_response: str) -> str:
         print(f"Error generating AI reply: {e}")
         return "Thank you for sharing that answer. Let's move on to the next question."
 
-async def process_user_answer(user_interview_id: str, raw_text: str, channel, diagram_url: str = None):
+
+async def process_user_answer(user_interview_id: str, raw_text: str, diagram_url: str = None):
     """Processes user response, polishes it, updates files, calls LLM, and sends next question."""
     session = active_sessions.get(user_interview_id)
     if not session:
@@ -165,25 +198,25 @@ async def process_user_answer(user_interview_id: str, raw_text: str, channel, di
     current_q = questions[idx]
 
     # Send status to frontend
-    channel.send(json.dumps({"type": "status", "message": "Polishing response..."}))
-    
+    send_to_client(user_interview_id, {"type": "status", "message": "Polishing response..."})
+
     # 1. Polish user response using Gemma-4-31B
     polished_text = await polish_user_response(raw_text)
-    
+
     # 2. Append to transcript and walkthrough files
-    append_to_transcript("Candidate", polished_text)
+    append_to_transcript(user_interview_id, "Candidate", polished_text)
     if diagram_url:
-        append_to_transcript("Candidate (Diagram)", f"![Diagram]({diagram_url})")
-    append_to_walkthrough(current_q["question_text"], current_q.get("type", "technical"), current_q.get("difficulty", "medium"), polished_text, diagram_url)
+        append_to_transcript(user_interview_id, "Candidate (Diagram)", f"![Diagram]({diagram_url})")
+    append_to_walkthrough(user_interview_id, current_q["question_text"], current_q.get("type", "technical"), current_q.get("difficulty", "medium"), polished_text, diagram_url)
 
     # Send status to frontend
-    channel.send(json.dumps({"type": "status", "message": "Formulating feedback..."}))
+    send_to_client(user_interview_id, {"type": "status", "message": "Formulating feedback..."})
 
     # 3. Call Gemma-4-31B for realtime reply/feedback
     ai_reply = await generate_ai_reply(current_q["question_text"], polished_text)
-    
+
     # 4. Append AI reply to transcript
-    append_to_transcript("Interviewer", ai_reply)
+    append_to_transcript(user_interview_id, "Interviewer", ai_reply)
 
     # 5. Determine next question
     next_idx = idx + 1
@@ -193,11 +226,11 @@ async def process_user_answer(user_interview_id: str, raw_text: str, channel, di
     if next_idx < len(questions):
         next_q = questions[next_idx]
         # Append next question to transcript on disk
-        append_to_transcript("Interviewer", f"Let's move to the next question. {next_q['question_text']}")
-        
+        append_to_transcript(user_interview_id, "Interviewer", f"Let's move to the next question. {next_q['question_text']}")
+
         # Read updated files to send to frontend
-        updated_transcript = read_file_content(TRANSCRIPT_PATH)
-        updated_walkthrough = read_file_content(WALKTHROUGH_PATH)
+        updated_transcript = _get_transcript(user_interview_id)
+        updated_walkthrough = _get_walkthrough(user_interview_id)
 
         # Send response back to the client
         response_payload = {
@@ -210,15 +243,15 @@ async def process_user_answer(user_interview_id: str, raw_text: str, channel, di
             "interview_completed": False,
             "diagram_tool": next_q.get("diagram_tool", False)
         }
-        channel.send(json.dumps(response_payload))
+        send_to_client(user_interview_id, response_payload)
     else:
         # Append final ending to transcript
         completion_msg = "This concludes our interview. Thank you for your time. I will now generate your comprehensive evaluation report. Please wait."
-        append_to_transcript("Interviewer", completion_msg)
-        
+        append_to_transcript(user_interview_id, "Interviewer", completion_msg)
+
         # Read updated files to send to frontend
-        updated_transcript = read_file_content(TRANSCRIPT_PATH)
-        updated_walkthrough = read_file_content(WALKTHROUGH_PATH)
+        updated_transcript = _get_transcript(user_interview_id)
+        updated_walkthrough = _get_walkthrough(user_interview_id)
 
         # Send response back to the client indicating completion
         response_payload = {
@@ -230,24 +263,24 @@ async def process_user_answer(user_interview_id: str, raw_text: str, channel, di
             "walkthrough": updated_walkthrough,
             "interview_completed": True
         }
-        channel.send(json.dumps(response_payload))
-        
+        send_to_client(user_interview_id, response_payload)
+
         # Launch report generation task using gemini-2.5-flash
         asyncio.create_task(generate_and_upload_report(
             user_interview_id=user_interview_id,
             user_name=session.get("user_name", "Candidate"),
-            track_title=session.get("track_title", "General Practice Interview"),
-            channel=channel
+            track_title=session.get("track_title", "General Practice Interview")
         ))
 
-async def generate_and_upload_report(user_interview_id: str, user_name: str, track_title: str, channel):
+
+async def generate_and_upload_report(user_interview_id: str, user_name: str, track_title: str):
     """Generates a performance evaluation report using Gemini 2.5 Flash, uploads to Supabase storage, and updates DB."""
     try:
-        channel.send(json.dumps({"type": "status", "message": "Analyzing performance & generating evaluation report..."}))
+        send_to_client(user_interview_id, {"type": "status", "message": "Analyzing performance & generating evaluation report..."})
 
         # 1. Fetch transcript and walkthrough content
-        transcript_content = read_file_content(TRANSCRIPT_PATH)
-        walkthrough_content = read_file_content(WALKTHROUGH_PATH)
+        transcript_content = _get_transcript(user_interview_id)
+        walkthrough_content = _get_walkthrough(user_interview_id)
 
         # 2. Invoke Gemini 2.5 Flash
         llm = ChatGoogleGenerativeAI(
@@ -283,14 +316,14 @@ async def generate_and_upload_report(user_interview_id: str, user_name: str, tra
         ui_data = res_ui.data
         if not ui_data:
             raise ValueError("User interview session record not found")
-        
+
         auth_id = ui_data.get("auth_id")
         interview_id = ui_data.get("interview_id")
 
         # 4. Upload report to 'ai-interview' storage bucket
         file_path = f"{auth_id}/{interview_id}.md"
         report_bytes = report_markdown.encode("utf-8")
-        
+
         print(f"Uploading report to Supabase bucket 'ai-interview' path: {file_path}...")
         try:
             supabase.storage.from_("ai-interview").upload(
@@ -318,104 +351,41 @@ async def generate_and_upload_report(user_interview_id: str, user_name: str, tra
         }).eq("id", user_interview_id).execute()
 
         # 7. Notify client that report is ready
-        channel.send(json.dumps({
+        send_to_client(user_interview_id, {
             "type": "report_ready",
             "report_url": report_url
-        }))
+        })
 
     except Exception as e:
         print(f"Error generating and uploading report: {e}")
-        channel.send(json.dumps({
+        send_to_client(user_interview_id, {
             "type": "error",
             "message": f"Failed to generate performance report: {str(e)}"
-        }))
+        })
 
-async def handle_webrtc_offer(sdp: str, offer_type: str, user_interview_id: str):
-    """Establishes WebRTC RTCPeerConnection and returns answer."""
-    # Configure with STUN server to discover public IP (matching frontend config)
-    config = RTCConfiguration(
-        iceServers=[RTCIceServer(urls="stun:stun.l.google.com:19302")]
-    )
-    pc = RTCPeerConnection(configuration=config)
-    pcs.add(pc)
 
-    @pc.on("datachannel")
-    def on_datachannel(channel):
-        print(f"Data channel created: {channel.label}")
-
-        @channel.on("message")
-        def on_message(message):
-            try:
-                data = json.loads(message)
-                msg_type = data.get("type")
-                
-                if msg_type == "start_session":
-                    asyncio.create_task(start_session(user_interview_id, channel))
-                elif msg_type == "user_response":
-                    raw_text = data.get("text", "")
-                    diagram_url = data.get("diagram_url", None)
-                    asyncio.create_task(process_user_answer(user_interview_id, raw_text, channel, diagram_url))
-                    
-            except Exception as e:
-                print(f"Error handling message on data channel: {e}")
-
-        @channel.on("close")
-        def on_close():
-            print(f"Data channel closed: {channel.label}")
-            if user_interview_id in active_sessions:
-                del active_sessions[user_interview_id]
-
-    @pc.on("iceconnectionstatechange")
-    async def on_iceconnectionstatechange():
-        print(f"ICE connection state is {pc.iceConnectionState}")
-        if pc.iceConnectionState == "failed" or pc.iceConnectionState == "closed":
-            await pc.close()
-            pcs.discard(pc)
-            if user_interview_id in active_sessions:
-                del active_sessions[user_interview_id]
-
-    # Set remote description
-    offer = RTCSessionDescription(sdp=sdp, type=offer_type)
-    await pc.setRemoteDescription(offer)
-
-    # Create answer
-    answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-
-    # Wait for ICE gathering to complete (non-trickle ICE)
-    # All candidates must be embedded in the SDP answer since we use HTTP POST signaling
-    ice_gather_timeout = 30  # 30 × 0.1s = 3 seconds max
-    while pc.iceGatheringState != "complete" and ice_gather_timeout > 0:
-        await asyncio.sleep(0.1)
-        ice_gather_timeout -= 1
-
-    if pc.iceGatheringState != "complete":
-        print(f"WARNING: ICE gathering did not complete within timeout. State: {pc.iceGatheringState}")
-
-    return {
-        "sdp": pc.localDescription.sdp,
-        "type": pc.localDescription.type
-    }
-
-async def start_session(user_interview_id: str, channel):
+async def start_session(user_interview_id: str):
     """Resets files, loads questions, and sends the first question to the user."""
     try:
         # 1. Reset files
-        reset_interview_files()
-        
+        reset_interview_files(user_interview_id)
+
+        # Ensure queue exists
+        get_or_create_session_queue(user_interview_id)
+
         # 2. Fetch questions from supabase
-        channel.send(json.dumps({"type": "status", "message": "Loading questions..."}))
+        send_to_client(user_interview_id, {"type": "status", "message": "Loading questions..."})
         questions = await get_interview_questions(user_interview_id)
-        
+
         if not questions:
-            channel.send(json.dumps({"type": "error", "message": "No questions found for this interview track."}))
+            send_to_client(user_interview_id, {"type": "error", "message": "No questions found for this interview track."})
             return
 
         # Get track title and candidate full name from database with retries
         track_title = "General Practice Interview"
         user_name = "Candidate"
         loop = asyncio.get_event_loop()
-        
+
         def _fetch_metadata():
             supabase = _get_supabase()
             res_ui = supabase.table("user_interview").select("interview_id, auth_id").eq("id", user_interview_id).single().execute()
@@ -423,10 +393,10 @@ async def start_session(user_interview_id: str, channel):
                 return None
             auth_id = res_ui.data.get("auth_id")
             int_id = res_ui.data.get("interview_id")
-            
+
             res_track = supabase.table("ai-interview").select("title").eq("id", int_id).single().execute()
             track_title_val = res_track.data.get("title") if res_track.data else "General Practice Interview"
-                
+
             res_user = supabase.table("user_data").select("data").eq("user_id", auth_id).single().execute()
             user_name_val = "Candidate"
             if res_user.data and "data" in res_user.data:
@@ -445,12 +415,13 @@ async def start_session(user_interview_id: str, channel):
                     print("Error fetching metadata for starting session, falling back to defaults")
                 await asyncio.sleep(1)
 
-        # Initialize session state
+        # Initialize session state (preserve existing queue)
+        existing_queue = active_sessions.get(user_interview_id, {}).get("queue")
         active_sessions[user_interview_id] = {
             "user_interview_id": user_interview_id,
             "questions": questions,
             "current_index": 0,
-            "channel": channel,
+            "queue": existing_queue or asyncio.Queue(maxsize=100),
             "user_name": user_name,
             "track_title": track_title
         }
@@ -458,13 +429,13 @@ async def start_session(user_interview_id: str, channel):
         # 3. Format and send first question
         first_q = questions[0]
         greeting = "Hello! Welcome to your simulated practice interview. Let's start with the first question."
-        
-        append_to_transcript("Interviewer", f"{greeting} {first_q['question_text']}")
-        
-        updated_transcript = read_file_content(TRANSCRIPT_PATH)
-        updated_walkthrough = read_file_content(WALKTHROUGH_PATH)
-        
-        channel.send(json.dumps({
+
+        append_to_transcript(user_interview_id, "Interviewer", f"{greeting} {first_q['question_text']}")
+
+        updated_transcript = _get_transcript(user_interview_id)
+        updated_walkthrough = _get_walkthrough(user_interview_id)
+
+        send_to_client(user_interview_id, {
             "type": "first_question",
             "greeting": greeting,
             "question": first_q["question_text"],
@@ -472,8 +443,19 @@ async def start_session(user_interview_id: str, channel):
             "transcript": updated_transcript,
             "walkthrough": updated_walkthrough,
             "diagram_tool": first_q.get("diagram_tool", False)
-        }))
-        
+        })
+
     except Exception as e:
         print(f"Error starting session: {e}")
-        channel.send(json.dumps({"type": "error", "message": f"Failed to start session: {str(e)}"}))
+        send_to_client(user_interview_id, {"type": "error", "message": f"Failed to start session: {str(e)}"})
+
+
+def cleanup_session(user_interview_id: str):
+    """Remove session data when interview ends or client disconnects."""
+    if user_interview_id in active_sessions:
+        del active_sessions[user_interview_id]
+    if user_interview_id in _in_memory_transcripts:
+        del _in_memory_transcripts[user_interview_id]
+    if user_interview_id in _in_memory_walkthroughs:
+        del _in_memory_walkthroughs[user_interview_id]
+    print(f"Cleaned up session for {user_interview_id}")
