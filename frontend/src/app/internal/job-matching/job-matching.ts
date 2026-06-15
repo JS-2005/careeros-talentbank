@@ -31,6 +31,7 @@ export interface Job {
   matched_optional_skills?: string[];
   isExtracting?: boolean;
   extractionFailed?: boolean;
+  has_credential_disqualifier?: boolean;
 }
 
 @Component({
@@ -389,42 +390,77 @@ export class JobMatching implements OnInit {
       this.filterJobs();
       this.cdr.detectChanges();
 
-      // 4. Concurrently run Gemma extract-single-job for each job, updating their UI status as they finish
-      const extractedJobs: Job[] = [];
+      // 4. Run Gemma extract-jobs-batch via SSE to batch process and eliminate browser connection limits
+      const extractedJobs: Job[] = new Array(rawJobs.length);
       
-      const extractionPromises = rawJobs.map(async (job) => {
-        try {
-          const extractRes = await fetch(`${environment.backendUrl}/api/v1/extract-single-job`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ raw_job: job })
-          });
+      try {
+        const response = await fetch(`${environment.backendUrl}/api/v1/extract-jobs-batch`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ raw_jobs: rawJobs })
+        });
 
-          if (!extractRes.ok) {
-            throw new Error('Extraction failed');
-          }
-
-          const extractedJob = await extractRes.json();
-          extractedJob.isExtracting = false;
-          extractedJob.extractionFailed = false;
-
-          // Update UI card extraction status
-          this.updateJobInGroups(extractedJob);
-          extractedJobs.push(extractedJob);
-        } catch (err) {
-          console.error(`Failed to extract job ${job.job_id}:`, err);
-          const failedJob = { ...job, isExtracting: false, extractionFailed: true };
-          this.updateJobInGroups(failedJob);
-          extractedJobs.push(failedJob);
+        if (!response.ok) {
+          throw new Error('Batch extraction request failed');
         }
-        this.cdr.detectChanges();
-      });
 
-      // Wait for all extractions to finish
-      await Promise.all(extractionPromises);
+        if (response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let done = false;
+          let buffer = '';
+
+          while (!done) {
+            const { value, done: readerDone } = await reader.read();
+            done = readerDone;
+            if (value) {
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n\n');
+              buffer = lines.pop() || ''; // Keep the incomplete chunk in the buffer
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const dataStr = line.substring(6).trim(); // Remove 'data: ' prefix
+                  if (!dataStr) continue;
+                  
+                  try {
+                    const data = JSON.parse(dataStr);
+                    if (data.type === 'done') {
+                      break; // Server finished
+                    } else if (data.job && data.index !== undefined) {
+                      const extractedJob = data.job;
+                      extractedJob.isExtracting = false;
+                      extractedJob.extractionFailed = false;
+                      extractedJobs[data.index] = extractedJob;
+                      
+                      // Update UI card extraction status incrementally
+                      this.updateJobInGroups(extractedJob);
+                      this.cdr.detectChanges();
+                    }
+                  } catch (e) {
+                    console.error('Failed to parse SSE data chunk:', e, dataStr);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Batch extraction failed entirely:', err);
+      }
+      
+      // Fallback: If any job failed to return via SSE (or entire request failed), mark it as failed
+      for (let i = 0; i < rawJobs.length; i++) {
+        if (!extractedJobs[i]) {
+          const failedJob = { ...rawJobs[i], isExtracting: false, extractionFailed: true };
+          this.updateJobInGroups(failedJob);
+          extractedJobs[i] = failedJob;
+        }
+      }
+
       this.isEnhancing = false;
       this.isScoring = true;
       this.cdr.detectChanges();
