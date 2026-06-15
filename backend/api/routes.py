@@ -10,7 +10,7 @@ import pycountry
 from aiolimiter import AsyncLimiter
 
 from services.AI_extract_service import AIOrganiser
-from services.supabase_service import store_data, retrieve_data, clear_all_user_data
+from services.supabase_service import store_data, retrieve_data, clear_all_user_data, check_cached_remap, upsert_job_batch
 from services.job_fetcher import fetch_job_list
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
@@ -120,7 +120,100 @@ async def extract_single_job(payload: SingleJobExtractRequest, supabase: Client 
                 return job # Return original raw job on complete failure
             await asyncio.sleep(2 ** attempt)
             
-    return job
+            return job # Explicit fallback if all retries exhaust without returning
+
+class BatchJobExtractRequest(BaseModel):
+    raw_jobs: List[Dict[str, Any]]
+
+@router.post("/extract-batch-jobs")
+async def extract_batch_jobs(payload: BatchJobExtractRequest, supabase: Client = Depends(get_supabase_client)):
+    jobs = payload.raw_jobs
+    if not jobs:
+        return []
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            async with rate_limiter:
+                async with sem:
+                    results = await asyncio.wait_for(AIOrganiser.batch_job_result_extraction(jobs), timeout=60.0)
+                    if results:
+                        return results
+                    return jobs
+        except asyncio.TimeoutError:
+            if attempt == max_retries - 1:
+                return jobs
+        except Exception as e:
+            if attempt == max_retries - 1:
+                return jobs
+            await asyncio.sleep(2 ** attempt)
+            
+    return jobs
+
+class RemapBatchRequest(BaseModel):
+    user_data_dict: Dict[str, Any]
+    jobs_to_evaluate: List[Dict[str, Any]]
+
+@router.post("/remap-batch-jobs")
+async def remap_batch_jobs(payload: RemapBatchRequest, supabase: Client = Depends(get_supabase_client)):
+    uid = supabase.user.id
+    user_data_dict = payload.user_data_dict
+    jobs_list = payload.jobs_to_evaluate
+    if not jobs_list:
+        return {"jobs": []}
+
+    job_ids = [job.get("job_id") for job in jobs_list if job.get("job_id")]
+    
+    cached_jobs = await check_cached_remap(uid, job_ids, supabase_client=supabase)
+    cached_job_ids = {job["job_id"]: job for job in cached_jobs if job.get("job_id")}
+    
+    jobs_to_process = []
+    final_results = []
+    
+    for job in jobs_list:
+        if job.get("job_id") in cached_job_ids:
+            final_results.append(cached_job_ids[job["job_id"]])
+        else:
+            jobs_to_process.append(job)
+            
+    if not jobs_to_process:
+        return {"jobs": final_results}
+
+    BATCH_SIZE = 5
+    batches = [jobs_to_process[i:i + BATCH_SIZE] for i in range(0, len(jobs_to_process), BATCH_SIZE)]
+    
+    async def process_batch(chunk):
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                async with rate_limiter:
+                    async with sem:
+                        res = await asyncio.wait_for(AIOrganiser.batch_job_remap(user_data_dict, chunk), timeout=60.0)
+                        return res
+            except asyncio.TimeoutError:
+                if attempt == max_retries - 1:
+                    return chunk
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    return chunk
+                await asyncio.sleep(2 ** attempt)
+        return chunk
+        
+    batch_tasks = [process_batch(chunk) for chunk in batches]
+    raw_remap_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+    
+    new_final_jobs = []
+    for res in raw_remap_results:
+        if isinstance(res, Exception):
+            pass
+        elif isinstance(res, list):
+            new_final_jobs.extend(res)
+            
+    if new_final_jobs:
+        asyncio.create_task(upsert_job_batch(new_final_jobs, True, uid, supabase_client=supabase))
+        final_results.extend(new_final_jobs)
+        
+    return {"jobs": final_results}
 
 @router.post("/remap-and-sort-jobs")
 async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depends(get_supabase_client)):
@@ -174,52 +267,9 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
             print("WARNING: Pinecone returned 0 matched jobs. Returning organised_job_result without ReMAP scores.")
             return {"jobs": organised_job_result, "remap_applied": False}
 
-        # ReMAP on the ordered job list of dict
-        async def remap_job(job):
-            max_retries = 5
-            for attempt in range(max_retries):
-                try:
-                    async with rate_limiter:
-                        async with sem:
-                            remap_result = await asyncio.wait_for(AIOrganiser.job_remap(user_data_dict, job), timeout=60.0)
-                            print("Sucessfully executed remap_job")
-                            return remap_result
-                except asyncio.TimeoutError:
-                    print(f"Attempt {attempt + 1} timed out for remap_job (job_id: {job.get('job_id')}) after 60s")
-                    if attempt == max_retries - 1:
-                        return job
-                except Exception as e:
-                    print(f"Attempt {attempt + 1} failed for remap_job (job_id: {job.get('job_id')}): {e}")
-                    if attempt == max_retries - 1:
-                        return job
-                    await asyncio.sleep(2 ** attempt)
-            return job  # Explicit fallback if all retries exhaust without returning
-
-        remap_tasks = [remap_job(job) for job in completed_ordered_job]
-
-        raw_remap_results = await asyncio.gather(*remap_tasks, return_exceptions=True)
-
-        remap_results_list = []
-        for i, result in enumerate(raw_remap_results):
-            if isinstance(result, Exception):
-                print(f"WARNING: ReMAP failed for job index {i}: {result}")
-            elif result is not None:
-                remap_results_list.append(result)
-        
-        if remap_tasks and not remap_results_list:
-            raise HTTPException(status_code=500, detail="All ReMAP evaluations failed")
-
-        # organise job list based on logical match score
-        remap_results_list = [r for r in remap_results_list if r is not None and isinstance(r, dict)]
-        remap_results_list.sort(key=lambda x: x.get('logical_match_score', 0), reverse=True)
-        final_ordered_job = remap_results_list
-        
-        # save final ordered job list
-        asyncio.create_task(store_data(final_ordered_job, "final_job_data", uid, supabase_client=supabase))
-
-        # send final ordered job list to frontend
-        print("Successfully executed analyse_and_match_job")
-        return {"jobs": final_ordered_job, "remap_applied": True}
+        # Return the jobs sorted by Pinecone immediately for lazy loading
+        print("Successfully executed analyse_and_match_job (Pinecone Sort Only)")
+        return {"jobs": completed_ordered_job, "remap_applied": False}
 
     except HTTPException as e:
         raise e

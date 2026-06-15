@@ -26,8 +26,7 @@ export interface Job {
   soft_skills: string[];
   logical_match_score?: number;
   remap_description?: string;
-  unmatched_mandatory_skills?: string[];
-  unmatched_responsibilities?: string[];
+  gaps?: string[];
   matched_optional_skills?: string[];
   isExtracting?: boolean;
   extractionFailed?: boolean;
@@ -389,47 +388,46 @@ export class JobMatching implements OnInit {
       this.filterJobs();
       this.cdr.detectChanges();
 
-      // 4. Concurrently run Gemma extract-single-job for each job, updating their UI status as they finish
+      // 4. Run Gemma extract-batch-jobs for jobs in chunks of 10
       const extractedJobs: Job[] = [];
-      
-      const extractionPromises = rawJobs.map(async (job) => {
+      const EXTRACT_BATCH_SIZE = 10;
+      for (let i = 0; i < rawJobs.length; i += EXTRACT_BATCH_SIZE) {
+        const chunk = rawJobs.slice(i, i + EXTRACT_BATCH_SIZE);
         try {
-          const extractRes = await fetch(`${environment.backendUrl}/api/v1/extract-single-job`, {
+          const extractRes = await fetch(`${environment.backendUrl}/api/v1/extract-batch-jobs`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ raw_job: job })
+            body: JSON.stringify({ raw_jobs: chunk })
           });
 
-          if (!extractRes.ok) {
-            throw new Error('Extraction failed');
+          if (!extractRes.ok) throw new Error('Batch extraction failed');
+          
+          const chunkExtracted = await extractRes.json();
+          for (const extJob of chunkExtracted) {
+            extJob.isExtracting = false;
+            extJob.extractionFailed = false;
+            this.updateJobInGroups(extJob);
+            extractedJobs.push(extJob);
           }
-
-          const extractedJob = await extractRes.json();
-          extractedJob.isExtracting = false;
-          extractedJob.extractionFailed = false;
-
-          // Update UI card extraction status
-          this.updateJobInGroups(extractedJob);
-          extractedJobs.push(extractedJob);
         } catch (err) {
-          console.error(`Failed to extract job ${job.job_id}:`, err);
-          const failedJob = { ...job, isExtracting: false, extractionFailed: true };
-          this.updateJobInGroups(failedJob);
-          extractedJobs.push(failedJob);
+          console.error('Failed to extract batch:', err);
+          for (const job of chunk) {
+            const failedJob = { ...job, isExtracting: false, extractionFailed: true };
+            this.updateJobInGroups(failedJob);
+            extractedJobs.push(failedJob);
+          }
         }
         this.cdr.detectChanges();
-      });
+      }
 
-      // Wait for all extractions to finish
-      await Promise.all(extractionPromises);
       this.isEnhancing = false;
       this.isScoring = true;
       this.cdr.detectChanges();
 
-      // 5. Trigger ReMAP sorting & Scoring
+      // 5. Trigger ReMAP Sorting (Fast Pinecone Sort)
       const remapRes = await fetch(`${environment.backendUrl}/api/v1/remap-and-sort-jobs`, {
         method: 'POST',
         headers: {
@@ -444,14 +442,56 @@ export class JobMatching implements OnInit {
 
       if (!remapRes.ok) {
         const errorData = await remapRes.json();
-        throw new Error(errorData?.detail || 'ReMAP scoring failed');
+        throw new Error(errorData?.detail || 'ReMAP sorting failed');
       }
 
       const remapResultData = await remapRes.json();
       this.remapResults = remapResultData.jobs || [];
 
-      // Sort by match score descending
-      this.remapResults.sort((a, b) => (b.logical_match_score || 0) - (a.logical_match_score || 0));
+      // Sort by semantic match roughly first since AI scores are missing
+      this.currentTab = 'recommendations';
+      this.isScoring = false; // Initial sort done
+      this.filterJobs();
+      this.cdr.detectChanges();
+
+      // 6. Progressively load ReMAP Scores in batches of 5
+      const REMAP_BATCH_SIZE = 5;
+      for (let i = 0; i < this.remapResults.length; i += REMAP_BATCH_SIZE) {
+        const chunk = this.remapResults.slice(i, i + REMAP_BATCH_SIZE);
+        try {
+          const batchRemapRes = await fetch(`${environment.backendUrl}/api/v1/remap-batch-jobs`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              user_data_dict: userDataDict,
+              jobs_to_evaluate: chunk
+            })
+          });
+
+          if (batchRemapRes.ok) {
+            const batchResultData = await batchRemapRes.json();
+            const scoredJobs = batchResultData.jobs || [];
+            
+            // Update the results with new scores
+            for (const scoredJob of scoredJobs) {
+              const idx = this.remapResults.findIndex(j => j.job_id === scoredJob.job_id);
+              if (idx !== -1) {
+                this.remapResults[idx] = scoredJob;
+              }
+            }
+            
+            // Re-sort and re-filter so highest scores bubble up
+            this.remapResults.sort((a, b) => (b.logical_match_score || 0) - (a.logical_match_score || 0));
+            this.filterJobs();
+            this.cdr.detectChanges();
+          }
+        } catch (err) {
+          console.error('Failed to load remap batch:', err);
+        }
+      }
 
       this.isScoring = false;
       this.currentTab = 'recommendations';

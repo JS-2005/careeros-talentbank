@@ -66,6 +66,32 @@ async def store_data(data: Union[BaseModel, List[dict], dict], data_type: str, u
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error storing data to Supabase: {str(e)}")
 
+async def upsert_job_batch(jobs: List[dict], is_final: bool, uid: str, supabase_client: Client = None):
+    supabase = supabase_client if supabase_client is not None else _get_supabase()
+    job_ids = [j.get('job_id') for j in jobs if j.get('job_id')]
+    
+    def _sync_upsert():
+        if job_ids:
+            supabase.table("user_jobs").delete().eq("user_id", uid).eq("is_final", is_final).in_("job_id", job_ids).execute()
+        
+        rows = []
+        for job_result in jobs:
+            job_id = job_result.get('job_id')
+            if job_id:
+                rows.append({
+                    "user_id": uid,
+                    "job_id": job_id,
+                    "is_final": is_final,
+                    "data": job_result
+                })
+        if rows:
+            supabase.table("user_jobs").insert(rows).execute()
+            
+    try:
+        await asyncio.to_thread(_sync_upsert)
+    except Exception as e:
+        print(f"Failed to upsert job batch: {e}")
+
 async def retrieve_data(type_retrieve: str, uid: str, job_id_list: List[str] = None, supabase_client: Client = None):
     """
     Retrieves data from Supabase. Runs synchronous calls in a background thread to prevent event loop blocking.
@@ -114,6 +140,19 @@ async def retrieve_data(type_retrieve: str, uid: str, job_id_list: List[str] = N
         return await asyncio.to_thread(_sync_retrieve)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving data from Supabase: {str(e)}")
+
+async def check_cached_remap(uid: str, job_ids: List[str], supabase_client: Client = None):
+    supabase = supabase_client if supabase_client is not None else _get_supabase()
+    
+    def _sync_check():
+        response = supabase.table("user_jobs").select("data").eq("user_id", uid).eq("is_final", True).in_("job_id", job_ids).execute()
+        return [row["data"] for row in response.data]
+        
+    try:
+        return await asyncio.to_thread(_sync_check)
+    except Exception as e:
+        print(f"Cache check failed: {e}")
+        return []
 
 async def clear_all_user_data(uid: str, supabase_client: Client = None):
     """
