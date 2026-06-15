@@ -7,8 +7,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from schemas.resume_schema import ResumeSearchData
-from schemas.job_schema import JobRequirements
-from schemas.remap_schema import RemapResult
+from schemas.job_schema import JobRequirements, JobBatchRequirements
+from schemas.remap_schema import RemapResult, BatchRemapResult
 from core.config import settings
 
 # initialise Gemini
@@ -137,6 +137,81 @@ class AIOrganiser:
             print(f"Error extracting job info: {str(e)}")
             return None
         
+    # extract for batch job result
+    @staticmethod
+    async def job_batch_extraction(job_results_batch):
+        # clean job results for the batch
+        clean_jobs = []
+        for job in job_results_batch:
+            clean_jobs.append({
+                "job_id": job.get("job_id"),
+                "title": job.get("title"),
+                "description": job.get("description"),
+                "salary": job.get("salary")
+            })
+
+        # system instruction for job batch extraction
+        system_instruct = SystemMessage(
+            content="""**Role & Objective**
+        You are an expert, high-precision data extraction assistant. Your task is to analyze JSON data containing multiple job search results and extract the core requirements, responsibilities, and salary information for each job listing. 
+
+        **CRITICAL: Strict Anti-Hallucination & Source Grounding**
+        * **Do not hallucinate.** You must extract data **only** from the provided JSON. 
+        * Do not use outside knowledge or common sense to guess, infer, or fill in missing information based on the job title or company.
+        * If a specific piece of information (e.g., education, salary, years of experience) is not explicitly stated in the job description or metadata, you must return the default empty value (`null`, `[]`, or `0`).
+        * **ID Mapping:** You MUST ensure that the extracted info accurately maps back to the `job_id` provided for each job.
+
+        **Output Format**
+        You must return a JSON object with an array of results, where each object strictly conforms to the provided schema and contains the original `job_id`. Do not include any explanations, conversational text, or markdown outside of the JSON block."""
+        )
+
+        # structured Gemma Output for batch
+        structured_llm = get_structured_llm(JobBatchRequirements)
+        
+        json_message = json.dumps({"jobs": clean_jobs})
+
+        # create multimodal message
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": json_message
+                }
+            ]
+        )
+
+        try:
+            # start extracting job info for the batch
+            extracted_batch_info = await structured_llm.ainvoke([system_instruct, message])
+
+            # create a lookup dictionary from the LLM results by job_id
+            extracted_dict_by_id = {
+                item.job_id: item.model_dump(exclude={'job_id'}) 
+                for item in extracted_batch_info.results
+            }
+
+            # Merge back with the original raw jobs
+            final_batch_results = []
+            for original_job in job_results_batch:
+                job_id = original_job.get("job_id")
+                
+                if job_id in extracted_dict_by_id:
+                    # Merge original job with extracted data
+                    merged_job = original_job.copy()
+                    for key, value in extracted_dict_by_id[job_id].items():
+                        if key not in merged_job:
+                            merged_job[key] = value
+                    final_batch_results.append(merged_job)
+                else:
+                    # If LLM skipped it, just return the original
+                    final_batch_results.append(original_job)
+
+            print("Successfully executed job_batch_extraction")
+            return final_batch_results
+        except Exception as e:
+            print(f"Error extracting batch job info: {str(e)}")
+            return job_results_batch  # fallback to raw jobs on error
+
     # ReMAP on organised job list
     @staticmethod
     async def job_remap(user_data: dict, job_data: dict):
@@ -158,6 +233,13 @@ class AIOrganiser:
             - Second, scan the candidate's entire profile for EACH mandatory requirement. If zero evidence is found, add it to the unmatched arrays.
             - Third, synthesize your findings into the single 'remap_description' sentence. State the critical gaps first, then briefly acknowledge the aligned strengths.
             6. DEALBREAKER CONSTRAINT: You are strictly PROHIBITED from setting 'has_dealbreaker_gap' to True due to missing technical skills, programming languages, software tools, frameworks, or daily job responsibilities. You may ONLY use the dealbreaker flag if the candidate is missing a non-negotiable structural requirement (e.g., mandatory University Degree, legal License, Security Clearance, or severe deficit in total years of experience). Even if the candidate lacks every single required skill, 'has_dealbreaker_gap' MUST STILL BE FALSE.
+            EXAMPLE EVALUATIONS:
+            - Candidate lacks Python, React, and AWS (all core skills). Candidate has a CS degree. 
+            -> has_dealbreaker_gap: False
+            - Candidate is missing 5 mandatory daily responsibilities. 
+            -> has_dealbreaker_gap: False
+            - Candidate is applying for a role requiring a CPA license, but only has a high school diploma. 
+            -> has_dealbreaker_gap: True
 
             OUTPUT CONSTRAINT:
             You must return ONLY the strictly structured JSON matching the provided schema. Do not include markdown formatting, conversational filler, or explanations outside of the JSON object. When in doubt about whether a candidate possesses a skill, conservatively classify it as UNMATCHED."""
@@ -228,3 +310,114 @@ class AIOrganiser:
         except Exception as e:
             print(f"Error during ReMAP evaluation: {str(e)}")
             return job_data  # Return original job without remap score
+
+    # Batch ReMAP on a list of organised jobs
+    @staticmethod
+    async def job_batch_remap(user_data: dict, batch_job_data: list[dict]):
+        if not batch_job_data:
+            return []
+            
+        try:
+            system_instruct = SystemMessage(
+                content="""You are the Core Extraction and Gap Analysis Engine for a ReMAP (Reasoning-enhanced Multi-turn Agent with Personalized Adaptation) recruitment framework. Your objective is to identify precise GAPS between a Candidate Profile and multiple Job Descriptions.
+            CRITICAL PROCESSING RULES:
+            1. THE EXPERIENCE & EDUCATION RULE: Evaluate years of experience strictly based on the timeline provided. For education, evaluate the academic context holistically.
+            2. STRICT EVIDENCE-BASED ANALYSIS: When determining if a candidate LACKS a requirement, you must base your decision ONLY on explicitly stated skills, technologies, and experience in the candidate's profile. If a specific technology is named in the JD, it is COMPLETELY MISSING unless that exact name appears.
+            3. MANDATORY VS. OPTIONAL: Focus gap analysis strictly on core requirements. Ignore the absence of items explicitly marked as 'preferred' or 'optional' in the JD.
+            4. THE CONSISTENCY MANDATE: There must be absolute alignment between your extracted data arrays and your final description sentence. You cannot mention a missing skill/responsibility in your final sentence unless it is explicitly listed in your unmatched arrays, and vice-versa.
+            5. DEALBREAKER CONSTRAINT: You are strictly PROHIBITED from setting 'has_dealbreaker_gap' to True due to missing technical skills. You may ONLY use the dealbreaker flag if the candidate is missing a non-negotiable structural requirement (e.g., mandatory University Degree, legal License, Security Clearance, or severe deficit in total years of experience). Even if the candidate lacks every single required skill, 'has_dealbreaker_gap' MUST STILL BE FALSE.
+            6. MULTI-JOB BATCHING: You will evaluate a list of jobs simultaneously against the single Candidate Profile. You MUST ensure that the output strictly maps back to the `job_id` provided for each job.
+
+            OUTPUT CONSTRAINT:
+            You must return ONLY the strictly structured JSON matching the provided schema `BatchRemapResult`. Do not include markdown formatting, conversational filler, or explanations outside of the JSON object. When in doubt about whether a candidate possesses a skill, conservatively classify it as UNMATCHED."""
+            )
+
+            # Structured Gemma output
+            structured_llm = get_structured_llm(BatchRemapResult)
+        except Exception as e:
+            print(f"Error preparing Batch ReMAP evaluation: {str(e)}")
+            return batch_job_data
+        
+        # Prepare lightweight job data to save tokens
+        clean_jobs = []
+        for job in batch_job_data:
+            clean_jobs.append({
+                "job_id": job.get("job_id"),
+                "title": job.get("title"),
+                "core_skills": job.get("core_skills"),
+                "soft_skills": job.get("soft_skills"),
+                "key_responsibilities": job.get("key_responsibilities"),
+                "minimum_years_experience": job.get("minimum_years_experience")
+            })
+
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": f"User Profile Data: {json.dumps(user_data)}\n\nJobs Data: {json.dumps(clean_jobs)}"
+                }
+            ]
+        )
+
+        try:
+            # start batch remap evaluation
+            remap_analysis = await structured_llm.ainvoke([system_instruct, message])
+            print("Successfully executed job_batch_remap")
+
+            # create a lookup dictionary from the LLM results by job_id
+            extracted_dict_by_id = {
+                item.job_id: item.model_dump(exclude={'job_id'})
+                for item in remap_analysis.results
+            }
+
+            final_batch_results = []
+            for job in batch_job_data:
+                job_id = job.get("job_id")
+                
+                updated_job_data = job.copy()
+                
+                if job_id in extracted_dict_by_id:
+                    result_dict = extracted_dict_by_id[job_id]
+                    
+                    # Merge all AI-extracted fields
+                    for key, value in result_dict.items():
+                        updated_job_data[key] = value
+
+                    # calculate score
+                    PENALTY_PER_UNMATCHED_MANDATORY = 10
+                    PENALTY_PER_UNMATCHED_RESP = 6
+                    BONUS_PER_MATCHED_OPTIONAL = 2
+                    base_score = 100
+
+                    num_unmatched_mandatory = len(result_dict.get('unmatched_mandatory_skills') or [])
+                    num_unmatched_resp = len(result_dict.get('unmatched_responsibilities') or [])
+                    num_matched_optional = len(result_dict.get('matched_optional_skills') or [])
+
+                    penalty = (num_unmatched_mandatory * PENALTY_PER_UNMATCHED_MANDATORY) + (num_unmatched_resp * PENALTY_PER_UNMATCHED_RESP)
+                    bonus = num_matched_optional * BONUS_PER_MATCHED_OPTIONAL
+
+                    core_score = base_score - penalty
+
+                    if penalty > 0:
+                        effective_bonus = min(bonus, penalty * 0.3)
+                        logical_match_score = core_score + effective_bonus
+                    else:
+                        logical_match_score = core_score + bonus
+
+                    logical_match_score = max(0, min(100, logical_match_score))
+                    
+                    if result_dict.get('has_dealbreaker_gap'):
+                        logical_match_score = 0
+                        
+                    updated_job_data['logical_match_score'] = logical_match_score
+                else:
+                    # If LLM missed this job, default score
+                    updated_job_data['logical_match_score'] = 0
+
+                final_batch_results.append(updated_job_data)
+
+            return final_batch_results
+
+        except Exception as e:
+            print(f"Error during Batch ReMAP evaluation: {str(e)}")
+            return batch_job_data  # fallback

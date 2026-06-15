@@ -138,24 +138,31 @@ class BatchExtractRequest(BaseModel):
 async def extract_jobs_batch(payload: BatchExtractRequest, supabase: Client = Depends(get_supabase_client)):
     """
     Batch extract structured data from multiple raw jobs via SSE streaming.
-    Each extracted job is streamed back as an SSE event as it completes,
-    allowing the frontend to progressively render results.
+    Chunks the input into batches of 5 to drastically reduce rate limit waits,
+    then processes them concurrently. Each extracted job is streamed back.
     Respects the 15 RPM Gemma rate limit via the global rate_limiter.
     """
     async def event_generator():
-        for idx, job in enumerate(payload.raw_jobs):
-            extracted = job  # default fallback to raw job
+        # Chunk jobs into batches of 5
+        batch_size = 5
+        jobs = payload.raw_jobs
+        batches = [jobs[i:i + batch_size] for i in range(0, len(jobs), batch_size)]
+        
+        # We need a way to keep track of the original index for each job
+        # so the frontend receives the correct index.
+        # Let's map each job to its original index
+        original_indices = {job.get('job_id'): idx for idx, job in enumerate(jobs)}
+
+        async def process_batch(batch):
             max_retries = 3
             for attempt in range(max_retries):
                 try:
                     async with rate_limiter:
                         async with sem:
                             result = await asyncio.wait_for(
-                                AIOrganiser.job_result_extraction(job), timeout=60.0
+                                AIOrganiser.job_batch_extraction(batch), timeout=60.0
                             )
-                            if result is not None:
-                                extracted = result
-                            break
+                            return result
                 except asyncio.TimeoutError:
                     if attempt < max_retries - 1:
                         continue
@@ -163,8 +170,22 @@ async def extract_jobs_batch(payload: BatchExtractRequest, supabase: Client = De
                     if attempt < max_retries - 1:
                         await asyncio.sleep(2 ** attempt)
                         continue
+            return batch # fallback to raw on complete failure
 
-            yield f"data: {json.dumps({'index': idx, 'job': extracted})}\n\n"
+        # Launch all batch tasks concurrently
+        tasks = [process_batch(batch) for batch in batches]
+        
+        # As each batch finishes, stream the jobs in that batch
+        for completed_task in asyncio.as_completed(tasks):
+            try:
+                extracted_batch = await completed_task
+                for job in extracted_batch:
+                    # Find original index
+                    idx = original_indices.get(job.get('job_id'))
+                    if idx is not None:
+                        yield f"data: {json.dumps({'index': idx, 'job': job})}\n\n"
+            except Exception as e:
+                print(f"Error processing batch: {e}")
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
@@ -198,6 +219,12 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
         return {"jobs": organised_job_result, "remap_applied": False}
 
     try:
+        # Ensure all jobs have a job_id before embedding and saving
+        for idx, job in enumerate(organised_job_result):
+            if not job.get('job_id'):
+                job['job_id'] = f"fallback_{uuid.uuid4().hex[:8]}"
+                print(f"WARNING: Job at index {idx} has no job_id. Assigned: {job['job_id']}")
+
         # Concurrently save the job and resume data, and embed job data to Pinecone.
         await asyncio.gather(
             # save organised job list
@@ -210,13 +237,9 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
             store_data(user_data_dict, "user_data", uid, supabase_client=supabase),
         )
 
-        ordered_job_list = await asyncio.to_thread(organise_user_data, user_data_dict, uid)
+        ordered_job_list = await organise_user_data(user_data_dict, uid)
 
         # Create a dictionary for instant lookups using the data you ALREADY fetched
-        for idx, job in enumerate(organised_job_result):
-            if not job.get('job_id'):
-                job['job_id'] = f"fallback_{uuid.uuid4().hex[:8]}"
-                print(f"WARNING: Job at index {idx} has no job_id. Assigned: {job['job_id']}")
         job_dict = {job.get('job_id'): job for job in organised_job_result if job.get('job_id')}
 
         # Build the completed_ordered_job list using the sorted IDs from Pinecone
@@ -235,40 +258,31 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
         jobs_to_remap = completed_ordered_job[:top_k]
         jobs_to_skip = completed_ordered_job[top_k:]
 
-        # ReMAP on the ordered job list of dict
-        async def remap_job(job):
-            max_retries = 5
-            for attempt in range(max_retries):
-                try:
-                    async with rate_limiter:
-                        async with sem:
-                            remap_result = await asyncio.wait_for(AIOrganiser.job_remap(user_data_dict, job), timeout=60.0)
-                            print("Sucessfully executed remap_job")
-                            return remap_result
-                except asyncio.TimeoutError:
-                    print(f"Attempt {attempt + 1} timed out for remap_job (job_id: {job.get('job_id')}) after 60s")
-                    if attempt == max_retries - 1:
-                        return job
-                except Exception as e:
-                    print(f"Attempt {attempt + 1} failed for remap_job (job_id: {job.get('job_id')}): {e}")
-                    if attempt == max_retries - 1:
-                        return job
-                    await asyncio.sleep(2 ** attempt)
-            return job  # Explicit fallback if all retries exhaust without returning
-
-        remap_tasks = [remap_job(job) for job in jobs_to_remap]
-
-        raw_remap_results = await asyncio.gather(*remap_tasks, return_exceptions=True)
-
+        # Use batch processing to reduce LLM calls
+        max_retries = 3
         remap_results_list = []
-        for i, result in enumerate(raw_remap_results):
-            if isinstance(result, Exception):
-                print(f"WARNING: ReMAP failed for job index {i}: {result}")
-            elif result is not None:
-                remap_results_list.append(result)
         
-        if remap_tasks and not remap_results_list:
-            raise HTTPException(status_code=500, detail="All ReMAP evaluations failed")
+        for attempt in range(max_retries):
+            try:
+                async with rate_limiter:
+                    async with sem:
+                        remap_results_list = await asyncio.wait_for(
+                            AIOrganiser.job_batch_remap(user_data_dict, jobs_to_remap), 
+                            timeout=90.0
+                        )
+                        break  # Success, exit retry loop
+            except asyncio.TimeoutError:
+                print(f"Attempt {attempt + 1} timed out for job_batch_remap after 90s")
+                if attempt == max_retries - 1:
+                    remap_results_list = jobs_to_remap # Fallback
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed for job_batch_remap: {e}")
+                if attempt == max_retries - 1:
+                    remap_results_list = jobs_to_remap # Fallback
+                await asyncio.sleep(2 ** attempt)
+
+        if not remap_results_list:
+            remap_results_list = jobs_to_remap
 
         # organise job list based on logical match score
         remap_results_list = [r for r in remap_results_list if r is not None and isinstance(r, dict)]
@@ -276,7 +290,8 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
         
         # Append skipped jobs with default score
         for job in jobs_to_skip:
-            job['logical_match_score'] = 0
+            if 'logical_match_score' not in job:
+                job['logical_match_score'] = 0
             remap_results_list.append(job)
 
         final_ordered_job = remap_results_list

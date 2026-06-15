@@ -122,7 +122,7 @@ async def embed_job_data(job_data: list[dict], uid: str):
     print("Successfully executed embed_job_data")
 
 # organise user data before vector searching
-def organise_user_data(user_data: dict, uid: str):
+async def organise_user_data(user_data: dict, uid: str):
     if not user_data:
         raise ValueError("No user data provided to organise.")
 
@@ -147,7 +147,7 @@ def organise_user_data(user_data: dict, uid: str):
     target_salary = user_data.get("expected_salary") or 0
 
     # 3. Pass granular data to search function
-    ranked_job_id = search_match_job(
+    ranked_job_id = await search_match_job(
         skills_query=skills_query, 
         experience_queries=experience_queries,
         years_of_experience=user_data.get("years_of_experience") or 0,
@@ -169,7 +169,7 @@ def extract_hits(result_obj):
     return hits
 
 # perform vector searching 
-def search_match_job(skills_query: str, experience_queries: list, years_of_experience: int, target_salary: int, uid: str):
+async def search_match_job(skills_query: str, experience_queries: list, years_of_experience: int, target_salary: int, uid: str):
     dense_index = pc.Index(index_name)
     
     # 1. Create a unified base filter
@@ -204,31 +204,33 @@ def search_match_job(skills_query: str, experience_queries: list, years_of_exper
 
     all_hit_lists = []
 
-    # 1. Search Skills
-    if skills_query.strip():
-        skills_result = dense_index.search(
+    async def do_search(query_text, search_filter, top_k):
+        result = await asyncio.to_thread(
+            dense_index.search,
             namespace=uid,
-            top_k=20,
-            inputs={"text": skills_query},
-            filter=skills_filter,
+            top_k=top_k,
+            inputs={"text": query_text},
+            filter=search_filter,
             rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
         )
-        hits = extract_hits(skills_result)
-        all_hit_lists.append(hits)
+        return extract_hits(result)
+
+    tasks = []
+
+    # 1. Search Skills
+    if skills_query.strip():
+        tasks.append(do_search(skills_query, skills_filter, 20))
 
     # 2. Search EACH Experience against Responsibilities
     for exp_query in experience_queries:
         if not exp_query.strip():
             continue
-            
-        exp_result = dense_index.search(
-            namespace=uid,
-            top_k=10, # Keep top_k lower per experience to focus on best matches
-            inputs={"text": exp_query},
-            filter=resp_filter,
-            rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
-        )
-        hits = extract_hits(exp_result)
+        tasks.append(do_search(exp_query, resp_filter, 10))
+
+    # Wait for all searches to complete concurrently
+    results = await asyncio.gather(*tasks)
+    
+    for hits in results:
         all_hit_lists.append(hits)
 
     # 3. Dynamic RRF Fusion across all searches

@@ -43,15 +43,17 @@ class RemapResult(BaseModel):
     )
     has_dealbreaker_gap: bool = Field(
         description=(
-            "Strict Boolean gate. Output True ONLY if the candidate is missing an absolute "
-            "administrative, legal, or structural prerequisite. Valid dealbreakers are strictly "
-            "limited to: missing a mandatory University Degree, lacking a required legal "
-            "License/Certification (e.g., CPA, RN), lacking required Security Clearance, or a "
-            "massive structural deficit in total years of experience (e.g., applying for a Senior "
-            "Director role with 0 years of experience). "
-            "ABSOLUTE PROHIBITION: You MUST NOT output True if the candidate is only missing technical skills, "
-            "programming languages, software tools, frameworks, or daily job responsibilities. "
-            "Even if the candidate is missing ALL required skills, this flag MUST REMAIN FALSE. "
-            "Missing skills are penalized in the score but are NEVER dealbreakers."
+            "Strict Boolean gate. Output True ONLY if the candidate is missing one of these four things: 1) Mandatory Degree, 2) Required License, 3) Security Clearance, 4) Structural Years of Experience. For all other gaps, output False."
         )
     )
+
+class RemapResultWithId(RemapResult):
+    job_id: str = Field(
+        description="The unique identifier of the job being evaluated."
+    )
+
+class BatchRemapResult(BaseModel):
+    results: list[RemapResultWithId] = Field(
+        description="A list containing the gap analysis results for multiple jobs."
+    )
+
