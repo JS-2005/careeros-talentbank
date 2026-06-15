@@ -219,13 +219,13 @@ async def search_match_job(skills_query: str, experience_queries: list, years_of
 
     # 1. Search Skills
     if skills_query.strip():
-        tasks.append(do_search(skills_query, skills_filter, 20))
+        tasks.append(do_search(skills_query, skills_filter, 5))
 
     # 2. Search EACH Experience against Responsibilities
     for exp_query in experience_queries:
         if not exp_query.strip():
             continue
-        tasks.append(do_search(exp_query, resp_filter, 10))
+        tasks.append(do_search(exp_query, resp_filter, 5))
 
     # Wait for all searches to complete concurrently
     results = await asyncio.gather(*tasks)

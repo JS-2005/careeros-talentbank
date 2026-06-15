@@ -31,7 +31,6 @@ export interface Job {
   matched_optional_skills?: string[];
   isExtracting?: boolean;
   extractionFailed?: boolean;
-  has_credential_disqualifier?: boolean;
 }
 
 @Component({

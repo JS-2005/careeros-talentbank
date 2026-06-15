@@ -286,9 +286,6 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
 
         # organise job list based on logical match score
         remap_results_list = [r for r in remap_results_list if r is not None and isinstance(r, dict)]
-        for job in remap_results_list:
-            if 'logical_match_score' not in job:
-                job['logical_match_score'] = 0
         remap_results_list.sort(key=lambda x: x.get('logical_match_score', 0), reverse=True)
         
         # Append skipped jobs with default score
