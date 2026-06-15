@@ -7,8 +7,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from schemas.resume_schema import ResumeSearchData
-from schemas.job_schema import JobRequirements, BatchJobRequirements
-from schemas.remap_schema import RemapResult, BatchRemapResult
+from schemas.job_schema import JobRequirements
+from schemas.remap_schema import RemapResult
 from core.config import settings
 
 # initialise Gemini
@@ -137,56 +137,6 @@ class AIOrganiser:
             print(f"Error extracting job info: {str(e)}")
             return None
         
-    @staticmethod
-    async def batch_job_result_extraction(jobs_list: list[dict]):
-        # clean job result array
-        clean_jobs = []
-        for job in jobs_list:
-            clean_jobs.append({
-                "title": job.get("title"),
-                "description": job.get("description"),
-                "salary": job.get("salary")
-            })
-
-        system_instruct = SystemMessage(
-            content="""**Role & Objective**
-        You are an expert, high-precision data extraction assistant. Your task is to analyze JSON data containing an ARRAY of job search results and extract the core requirements, responsibilities, and salary information for EACH job listing. 
-        
-        **CRITICAL: Strict Anti-Hallucination & Source Grounding**
-        * **Do not hallucinate.** You must extract data **only** from the provided `job_results` JSON array. 
-        * Return an object with a `results` array containing the extracted details in the EXACT SAME ORDER as the provided jobs.
-        * If a specific piece of information is not explicitly stated in the job description or metadata, return the default empty value (`null`, `[]`, or `0`)."""
-        )
-
-        structured_llm = get_structured_llm(BatchJobRequirements)
-        json_message = json.dumps(clean_jobs)
-
-        message = HumanMessage(
-            content=[
-                {
-                    "type": "text",
-                    "text": json_message
-                }
-            ]
-        )
-
-        try:
-            extracted_batch = await structured_llm.ainvoke([system_instruct, message])
-            
-            final_jobs = []
-            for i, extracted in enumerate(extracted_batch.results):
-                job_result = jobs_list[i].copy()
-                extracted_dict = extracted.model_dump()
-                for key, value in extracted_dict.items():
-                    job_result[key] = value
-                final_jobs.append(job_result)
-
-            print("Successfully executed batch_job_result_extraction")
-            return final_jobs
-        except Exception as e:
-            print(f"Error extracting batch job info: {str(e)}")
-            return jobs_list
-        
     # ReMAP on organised job list
     @staticmethod
     async def job_remap(user_data: dict, job_data: dict):
@@ -233,16 +183,18 @@ class AIOrganiser:
             print("Successfully executed job_remap")
 
             # score for each categories
-            PENALTY_PER_GAP = 8
+            PENALTY_PER_UNMATCHED_MANDATORY = 10
+            PENALTY_PER_UNMATCHED_RESP = 6
             BONUS_PER_MATCHED_OPTIONAL = 2
             base_score = 100
 
             # get number of unmatched and matched items
-            num_gaps = len(remap_analysis.gaps or [])
+            num_unmatched_mandatory = len(remap_analysis.unmatched_mandatory_skills or [])
+            num_unmatched_resp = len(remap_analysis.unmatched_responsibilities or [])
             num_matched_optional = len(remap_analysis.matched_optional_skills or [])
 
             # calculate penalty and bonus
-            penalty = num_gaps * PENALTY_PER_GAP
+            penalty = (num_unmatched_mandatory * PENALTY_PER_UNMATCHED_MANDATORY) + (num_unmatched_resp * PENALTY_PER_UNMATCHED_RESP)
             bonus = num_matched_optional * BONUS_PER_MATCHED_OPTIONAL
 
             core_score = base_score - penalty
@@ -275,82 +227,3 @@ class AIOrganiser:
         except Exception as e:
             print(f"Error during ReMAP evaluation: {str(e)}")
             return job_data  # Return original job without remap score
-
-    @staticmethod
-    async def batch_job_remap(user_data: dict, jobs_list: list[dict]):
-        try:
-            system_instruct = SystemMessage(
-                content="""You are the Core Extraction and Gap Analysis Engine for a ReMAP (Reasoning-enhanced Multi-turn Agent with Personalized Adaptation) recruitment framework. Your objective is to identify precise GAPS between a Candidate Profile and an ARRAY of Job Descriptions.
-            CRITICAL PROCESSING RULES:
-            1. Evaluate EACH job individually against the Candidate Profile. Return an object with a `results` array containing the exact same number of evaluation objects as the input jobs list, in the exact same order.
-            2. THE EXPERIENCE & EDUCATION RULE: Evaluate years of experience strictly based on the timeline provided.
-            3. STRICT EVIDENCE-BASED ANALYSIS: Base your decision ONLY on explicitly stated skills, technologies, and experience in the candidate's profile.
-            4. THE CONSISTENCY MANDATE: Ensure alignment between the 'gaps' array and the 'remap_description'.
-            OUTPUT CONSTRAINT:
-            Return ONLY structured JSON matching the provided schema."""
-            )
-
-            structured_llm = get_structured_llm(BatchRemapResult)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error preparing batch ReMAP evaluation: {str(e)}")
-        
-        minimal_jobs_list = []
-        for job in jobs_list:
-            minimal_jobs_list.append({
-                "title": job.get("title"),
-                "description": job.get("description", "")[:3000],
-                "requirements": job.get("requirements"),
-                "responsibilities": job.get("responsibilities"),
-                "core_skills": job.get("core_skills"),
-                "key_responsibilities": job.get("key_responsibilities")
-            })
-
-        message = HumanMessage(
-            content=[
-                {
-                    "type": "text",
-                    "text": f"User Profile Data: {json.dumps(user_data)}\n\nJobs List: {json.dumps(minimal_jobs_list)}"
-                }
-            ]
-        )
-
-        try:
-            batch_remap_analysis = await structured_llm.ainvoke([system_instruct, message])
-            print("Successfully executed batch_job_remap")
-
-            PENALTY_PER_GAP = 8
-            BONUS_PER_MATCHED_OPTIONAL = 2
-            base_score = 100
-
-            final_jobs = []
-            for i, remap_analysis in enumerate(batch_remap_analysis.results):
-                num_gaps = len(remap_analysis.gaps or [])
-                num_matched_optional = len(remap_analysis.matched_optional_skills or [])
-
-                penalty = num_gaps * PENALTY_PER_GAP
-                bonus = num_matched_optional * BONUS_PER_MATCHED_OPTIONAL
-                core_score = base_score - penalty
-
-                if penalty > 0:
-                    effective_bonus = min(bonus, penalty * 0.3)
-                    logical_match_score = core_score + effective_bonus
-                else:
-                    logical_match_score = core_score + bonus
-
-                logical_match_score = max(0, min(100, logical_match_score))
-                
-                if remap_analysis.has_dealbreaker_gap:
-                    logical_match_score = 0
-                
-                updated_job_data = jobs_list[i].copy()
-                extracted_dict = remap_analysis.model_dump()
-                for key, value in extracted_dict.items():
-                    updated_job_data[key] = value
-
-                updated_job_data['logical_match_score'] = logical_match_score
-                final_jobs.append(updated_job_data)
-
-            return final_jobs
-        except Exception as e:
-            print(f"Error during batch ReMAP evaluation: {str(e)}")
-            return jobs_list

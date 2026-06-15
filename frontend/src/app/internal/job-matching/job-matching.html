@@ -284,13 +284,13 @@
 
               <!-- Optional skills matched & missing skills badges -->
               <div class="badge-row"
-                *ngIf="job.gaps && job.gaps.length > 0">
+                *ngIf="job.unmatched_mandatory_skills && job.unmatched_mandatory_skills.length > 0">
                 <span class="missing-badge-title">Missing:</span>
-                <span *ngFor="let gap of job.gaps.slice(0, 3)" class="missing-skill-badge">
-                  {{ gap }}
+                <span *ngFor="let skill of job.unmatched_mandatory_skills.slice(0, 3)" class="missing-skill-badge">
+                  {{ skill }}
                 </span>
-                <span class="more-badge" *ngIf="job.gaps.length > 3">
-                  +{{ job.gaps.length - 3 }} more
+                <span class="more-badge" *ngIf="job.unmatched_mandatory_skills.length > 3">
+                  +{{ job.unmatched_mandatory_skills.length - 3 }} more
                 </span>
               </div>
             </div>
@@ -376,13 +376,13 @@
 
         <!-- Skill & Responsibility Gap Analysis -->
         <div class="gap-analysis-grids">
-          <!-- Missing Gaps -->
+          <!-- Missing Mandatory Skills -->
           <div class="gap-grid-box"
-            *ngIf="selectedJob.gaps && selectedJob.gaps.length > 0">
-            <h4 class="gap-box-title missing"><i class="bx bx-x-circle"></i> Missing Requirements & Gaps</h4>
+            *ngIf="selectedJob.unmatched_mandatory_skills && selectedJob.unmatched_mandatory_skills.length > 0">
+            <h4 class="gap-box-title missing"><i class="bx bx-x-circle"></i> Missing Mandatory Skills</h4>
             <div class="gap-badge-list">
-              <span *ngFor="let gap of selectedJob.gaps" class="skill-gap-badge missing">
-                {{ gap }}
+              <span *ngFor="let skill of selectedJob.unmatched_mandatory_skills" class="skill-gap-badge missing">
+                {{ skill }}
               </span>
             </div>
           </div>
@@ -396,6 +396,17 @@
                 {{ skill }}
               </span>
             </div>
+          </div>
+
+          <!-- Missing Responsibilities -->
+          <div class="gap-grid-box full-width"
+            *ngIf="selectedJob.unmatched_responsibilities && selectedJob.unmatched_responsibilities.length > 0">
+            <h4 class="gap-box-title missing"><i class="bx bx-info-circle"></i> Unmatched Key Responsibilities</h4>
+            <ul class="unmatched-resp-list">
+              <li *ngFor="let resp of selectedJob.unmatched_responsibilities">
+                {{ resp }}
+              </li>
+            </ul>
           </div>
         </div>
       </div>

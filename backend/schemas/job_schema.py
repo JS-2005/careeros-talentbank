@@ -40,6 +40,3 @@ class JobRequirements(BaseModel):
         default=None,
         description="The structured extraction of the salary information."
     )
-
-class BatchJobRequirements(BaseModel):
-    results: List[JobRequirements]

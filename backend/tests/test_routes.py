@@ -71,10 +71,12 @@ def test_valid_extract_n_group_jobs(
 @patch("api.routes.store_data", new_callable=AsyncMock)
 @patch("api.routes.embed_job_data", new_callable=AsyncMock)
 @patch("api.routes.organise_user_data")
+@patch("api.routes.AIOrganiser.job_remap")
 def test_valid_remap_n_sort_jobs(
-    mock_organise_user_data, mock_embed_job_data, mock_store_data
+    mock_job_remap, mock_organise_user_data, mock_embed_job_data, mock_store_data
 ):
     mock_organise_user_data.return_value = ["123"]
+    mock_job_remap.return_value = {"job_id": "123", "is_logical_match": "High", "logical_match_score": 90}
 
     payload = {
         "user_data_dict": {"target_job_roles": ["Software Engineer"]},
@@ -88,46 +90,7 @@ def test_valid_remap_n_sort_jobs(
     assert "jobs" in data
     assert len(data["jobs"]) == 1
     assert data["jobs"][0]["job_id"] == "123"
-    assert data["remap_applied"] == False
     mock_store_data.assert_any_call([{"job_id": "123", "title": "SE at Google", "description": "Code"}], "job_data", "mock_test_uid_123", supabase_client=ANY)
     mock_embed_job_data.assert_called_once()
     mock_organise_user_data.assert_called_once()
-
-@patch("api.routes.AIOrganiser.batch_job_result_extraction", new_callable=AsyncMock)
-def test_extract_batch_jobs(mock_batch_extract):
-    mock_batch_extract.return_value = [{"job_id": "1", "title": "Job 1", "extracted": True}]
-    
-    payload = {
-        "raw_jobs": [{"job_id": "1", "title": "Job 1"}]
-    }
-    
-    response = client.post("/api/v1/extract-batch-jobs", json=payload)
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["extracted"] == True
-    mock_batch_extract.assert_called_once()
-
-@patch("api.routes.AIOrganiser.batch_job_remap", new_callable=AsyncMock)
-@patch("api.routes.check_cached_remap", new_callable=AsyncMock)
-@patch("api.routes.upsert_job_batch", new_callable=AsyncMock)
-def test_remap_batch_jobs(mock_upsert, mock_check_cache, mock_batch_remap):
-    mock_check_cache.return_value = []
-    mock_batch_remap.return_value = [{"job_id": "1", "logical_match_score": 85}]
-    
-    payload = {
-        "user_data_dict": {"skills": ["Python"]},
-        "jobs_to_evaluate": [{"job_id": "1", "title": "Job 1"}]
-    }
-    
-    response = client.post("/api/v1/remap-batch-jobs", json=payload)
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert "jobs" in data
-    assert len(data["jobs"]) == 1
-    assert data["jobs"][0]["logical_match_score"] == 85
-    mock_batch_remap.assert_called_once()
-    mock_check_cache.assert_called_once()
-    mock_upsert.assert_called_once()
+    mock_job_remap.assert_called_once()
