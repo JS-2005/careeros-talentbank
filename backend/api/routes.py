@@ -70,11 +70,21 @@ async def search_initial_jobs(country: str = Form(...),
                 async with sem:
                     return await AIOrganiser.resume_analysis(file)
 
-        # Concurrently clear old data and analyze resume
-        _, resume_result = await asyncio.gather(
-            clear_all_user_data(uid, supabase_client=supabase),
-            analyze_resume()
-        )
+        raw_job_result = None
+
+        if search_query:
+            # OPTIMIZATION: Concurrently clear old data, analyze resume, and fetch jobs using the fallback search_query
+            _, resume_result, raw_job_result = await asyncio.gather(
+                clear_all_user_data(uid, supabase_client=supabase),
+                analyze_resume(),
+                fetch_job_list([search_query], country, country_abbr, state, is_intern)
+            )
+        else:
+            # Concurrently clear old data and analyze resume
+            _, resume_result = await asyncio.gather(
+                clear_all_user_data(uid, supabase_client=supabase),
+                analyze_resume()
+            )
         
         if not resume_result.is_valid_resume:
             raise HTTPException(status_code=400, detail="Invalid PDF file")
@@ -83,13 +93,16 @@ async def search_initial_jobs(country: str = Form(...),
         job_search_info = resume_result.target_job_roles
         auto_match_enabled = True
 
+        # If we didn't fetch concurrently (no fallback search_query), fetch now
+        if raw_job_result is None:
+            raw_job_result = await fetch_job_list(job_search_info, country, country_abbr, state, is_intern)
+
     else:
         # Clear previous search data from database to prevent stale data
         await clear_all_user_data(uid, supabase_client=supabase)
         job_search_info = [search_query]
-
-    # Fetch Raw Jobs from SerpApi
-    raw_job_result = await fetch_job_list(job_search_info, country, country_abbr, state, is_intern)
+        # Fetch Raw Jobs from SerpApi
+        raw_job_result = await fetch_job_list(job_search_info, country, country_abbr, state, is_intern)
 
     # Prepare user data to send back (only exists if a resume was uploaded)
     if file is not None:
