@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import uuid
 from fastapi import Form
 import asyncio
+import json
 
 import pycountry
 from aiolimiter import AsyncLimiter
@@ -14,6 +15,7 @@ from services.supabase_service import store_data, retrieve_data, clear_all_user_
 from services.job_fetcher import fetch_job_list
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from starlette.responses import StreamingResponse
 from core.security import get_supabase_client
 from supabase import Client
 
@@ -25,7 +27,7 @@ router = APIRouter()
 # 15 RPM = 1 request every 4 seconds. Use 4.5s for safety margin.
 # max_rate=1 means exactly 1 token available at a time (no burst).
 rate_limiter = AsyncLimiter(max_rate=1, time_period=4.5)
-sem = asyncio.Semaphore(1)  # Strictly serialize all Gemma calls
+sem = asyncio.Semaphore(2)  # Allow 2 concurrent Gemma calls for I/O pipelining (rate_limiter still enforces 15 RPM)
 
 class RemapJobsRequest(BaseModel):
     user_data_dict: Dict[str, Any]
@@ -128,6 +130,53 @@ async def extract_single_job(payload: SingleJobExtractRequest, supabase: Client 
             await asyncio.sleep(2 ** attempt)
             
     return job
+
+class BatchExtractRequest(BaseModel):
+    raw_jobs: List[Dict[str, Any]]
+
+@router.post("/extract-jobs-batch")
+async def extract_jobs_batch(payload: BatchExtractRequest, supabase: Client = Depends(get_supabase_client)):
+    """
+    Batch extract structured data from multiple raw jobs via SSE streaming.
+    Each extracted job is streamed back as an SSE event as it completes,
+    allowing the frontend to progressively render results.
+    Respects the 15 RPM Gemma rate limit via the global rate_limiter.
+    """
+    async def event_generator():
+        for idx, job in enumerate(payload.raw_jobs):
+            extracted = job  # default fallback to raw job
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    async with rate_limiter:
+                        async with sem:
+                            result = await asyncio.wait_for(
+                                AIOrganiser.job_result_extraction(job), timeout=60.0
+                            )
+                            if result is not None:
+                                extracted = result
+                            break
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        continue
+                except Exception:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+
+            yield f"data: {json.dumps({'index': idx, 'job': extracted})}\n\n"
+
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 @router.post("/remap-and-sort-jobs")
 async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depends(get_supabase_client)):
@@ -248,9 +297,12 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
 async def get_saved_jobs(supabase: Client = Depends(get_supabase_client)):
     try:
         uid = supabase.user.id
-        user_data = await retrieve_data("user", uid, supabase_client=supabase)
-        job_data = await retrieve_data("job", uid, supabase_client=supabase)
-        final_job_data = await retrieve_data("final_job", uid, supabase_client=supabase)
+        # Run all 3 independent queries in parallel (~3× faster)
+        user_data, job_data, final_job_data = await asyncio.gather(
+            retrieve_data("user", uid, supabase_client=supabase),
+            retrieve_data("job", uid, supabase_client=supabase),
+            retrieve_data("final_job", uid, supabase_client=supabase),
+        )
         
         return {
             "uid": uid,
@@ -273,8 +325,6 @@ from services.interview_session_service import (
     TRANSCRIPT_PATH,
     WALKTHROUGH_PATH,
 )
-from starlette.responses import StreamingResponse
-import json as _json
 
 
 class StartSessionRequest(BaseModel):
@@ -323,14 +373,14 @@ async def interview_events(user_interview_id: str):
         queue = get_or_create_session_queue(user_interview_id)
 
         # Send an initial connection-confirmed event
-        yield f"data: {_json.dumps({'type': 'connected', 'message': 'SSE connection established'})}\n\n"
+        yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE connection established'})}\n\n"
 
         try:
             while True:
                 try:
                     # Wait for a message with a 30-second timeout (acts as keep-alive interval)
                     message = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    yield f"data: {_json.dumps(message)}\n\n"
+                    yield f"data: {json.dumps(message)}\n\n"
 
                     # If report is ready or there's a terminal error, close the stream
                     if message.get("type") in ("report_ready",):

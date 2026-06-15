@@ -48,8 +48,10 @@ class RemapResult(BaseModel):
             "limited to: missing a mandatory University Degree, lacking a required legal "
             "License/Certification (e.g., CPA, RN), lacking required Security Clearance, or a "
             "massive structural deficit in total years of experience (e.g., applying for a Senior "
-            "Director role with 0 years of experience). CRITICAL CONSTRAINT: You MUST output False "
-            "if the candidate is only missing technical skills, programming languages, software "
-            "tools, or daily job responsibilities. Never use missing skills as a dealbreaker."
+            "Director role with 0 years of experience). "
+            "ABSOLUTE PROHIBITION: You MUST NOT output True if the candidate is only missing technical skills, "
+            "programming languages, software tools, frameworks, or daily job responsibilities. "
+            "Even if the candidate is missing ALL required skills, this flag MUST REMAIN FALSE. "
+            "Missing skills are penalized in the score but are NEVER dealbreakers."
         )
     )

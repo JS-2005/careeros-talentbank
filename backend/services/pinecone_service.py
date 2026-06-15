@@ -13,14 +13,6 @@ index_name = "job-matching-index"
 # embed job infomation
 async def embed_job_data(job_data: list[dict], uid: str):
 
-    # new job list enter, delete old job list
-    def delete_exist_data(dense_index):
-        try:
-            dense_index.delete(delete_all=True, namespace=uid)
-            print(f"Successfully deleted existing data for user: {uid}")
-        except Exception as e:
-            print(f"Fail to delete existing data in namespace {uid}")
-
     if not pc.has_index(index_name):
         pc.create_index_for_model(
             name=index_name,
@@ -34,11 +26,12 @@ async def embed_job_data(job_data: list[dict], uid: str):
 
     dense_index = pc.Index(index_name)
 
-    stats = dense_index.describe_index_stats()
-    ns = stats.namespaces.get(uid)
-    vector_count = getattr(ns, 'vector_count', 0) if ns else 0
-    if vector_count > 0:
-        delete_exist_data(dense_index)
+    # Always clear old data — delete is idempotent, saves a blocking describe_index_stats() call
+    try:
+        await asyncio.to_thread(dense_index.delete, delete_all=True, namespace=uid)
+        print(f"Cleared existing data for user: {uid}")
+    except Exception:
+        pass  # No data to delete or namespace doesn't exist — safe to continue
 
     # list of all job record
     structure_job = []
@@ -124,17 +117,8 @@ async def embed_job_data(job_data: list[dict], uid: str):
 
         print(f"Batch {i} to {i+len(batch)} successfully upserted")
 
-    # Wait for vectors to be fully indexed (poll with backoff, max 10s)
-    for _ in range(5):
-        await asyncio.sleep(2)
-        stats = dense_index.describe_index_stats()
-        ns = stats.namespaces.get(uid)
-        if ns and getattr(ns, 'vector_count', 0) >= len(structure_job):
-            break
-
-    # view stats for index
-    stats = dense_index.describe_index_stats()
-    print (stats)
+    # Brief wait for serverless Pinecone to index upserted vectors (~1-2s typical)
+    await asyncio.sleep(2)
     print("Successfully executed embed_job_data")
 
 # organise user data before vector searching

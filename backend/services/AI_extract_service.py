@@ -157,6 +157,7 @@ class AIOrganiser:
             - First, extract all responsibilities and skills from the JD, separating mandatory from optional.
             - Second, scan the candidate's entire profile for EACH mandatory requirement. If zero evidence is found, add it to the unmatched arrays.
             - Third, synthesize your findings into the single 'remap_description' sentence. State the critical gaps first, then briefly acknowledge the aligned strengths.
+            6. DEALBREAKER CONSTRAINT: You are strictly PROHIBITED from setting 'has_dealbreaker_gap' to True due to missing technical skills, programming languages, software tools, frameworks, or daily job responsibilities. You may ONLY use the dealbreaker flag if the candidate is missing a non-negotiable structural requirement (e.g., mandatory University Degree, legal License, Security Clearance, or severe deficit in total years of experience). Even if the candidate lacks every single required skill, 'has_dealbreaker_gap' MUST STILL BE FALSE.
 
             OUTPUT CONSTRAINT:
             You must return ONLY the strictly structured JSON matching the provided schema. Do not include markdown formatting, conversational filler, or explanations outside of the JSON object. When in doubt about whether a candidate possesses a skill, conservatively classify it as UNMATCHED."""
