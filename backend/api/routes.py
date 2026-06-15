@@ -48,8 +48,9 @@ async def search_initial_jobs(country: str = Form(...),
         raise HTTPException(status_code=400, detail="Must upload resume pdf or enter search query")
 
     # Validate country BEFORE clearing data
-    country_obj = pycountry.countries.get(name=country)
-    if not country_obj:
+    try:
+        country_obj = pycountry.countries.lookup(country)
+    except LookupError:
         raise HTTPException(status_code=400, detail=f"Invalid country name")
     country_abbr = country_obj.alpha_2.lower()
 
@@ -122,12 +123,13 @@ async def extract_single_job(payload: SingleJobExtractRequest, supabase: Client 
                         return job # fallback to raw if none
                     return result
         except asyncio.TimeoutError:
-            if attempt == max_retries - 1:
-                return job # Return original raw job on complete failure
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
         except Exception as e:
-            if attempt == max_retries - 1:
-                return job # Return original raw job on complete failure
-            await asyncio.sleep(2 ** attempt)
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
             
     return job
 
@@ -165,6 +167,7 @@ async def extract_jobs_batch(payload: BatchExtractRequest, supabase: Client = De
                             return result
                 except asyncio.TimeoutError:
                     if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)
                         continue
                 except Exception:
                     if attempt < max_retries - 1:
@@ -204,6 +207,9 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
     uid = supabase.user.id
     user_data_dict = payload.user_data_dict
     organised_job_result = payload.organised_job_result
+
+    if not organised_job_result:
+        return {"jobs": [], "remap_applied": False}
 
     if not user_data_dict:
         print("No user data provided. Skipping ReMAP and returning organised jobs.")
@@ -273,13 +279,14 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
                         break  # Success, exit retry loop
             except asyncio.TimeoutError:
                 print(f"Attempt {attempt + 1} timed out for job_batch_remap after 90s")
-                if attempt == max_retries - 1:
-                    remap_results_list = jobs_to_remap # Fallback
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
             except Exception as e:
                 print(f"Attempt {attempt + 1} failed for job_batch_remap: {e}")
-                if attempt == max_retries - 1:
-                    remap_results_list = jobs_to_remap # Fallback
-                await asyncio.sleep(2 ** attempt)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
 
         if not remap_results_list:
             remap_results_list = jobs_to_remap
@@ -297,7 +304,7 @@ async def remap_n_sort_jobs(payload: RemapJobsRequest, supabase: Client = Depend
         final_ordered_job = remap_results_list
         
         # save final ordered job list
-        asyncio.create_task(store_data(final_ordered_job, "final_job_data", uid, supabase_client=supabase))
+        await store_data(final_ordered_job, "final_job_data", uid, supabase_client=supabase)
 
         # send final ordered job list to frontend
         print("Successfully executed analyse_and_match_job")

@@ -38,7 +38,7 @@ class AIOrganiser:
     async def resume_analysis(pdf_resume: UploadFile):
         try:
             # read file and convert to base64
-            file_contents = await asyncio.to_thread(pdf_resume.file.read)
+            file_contents = await pdf_resume.read()
             pdf_base64 = base64.b64encode(file_contents).decode('utf-8')
 
         except Exception as e:
