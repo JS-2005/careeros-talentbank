@@ -6,7 +6,13 @@ app = FastAPI(title="Job Matcher API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all origins for Vercel deployment flexibility
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:4200",
+        "http://localhost:5173",
+        "https://careeros-talentbank.vercel.app",
+    ],
+    allow_origin_regex=r"https://careeros-talentbank.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

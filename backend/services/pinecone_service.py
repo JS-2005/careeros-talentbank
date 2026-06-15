@@ -172,48 +172,52 @@ def extract_hits(result_obj):
 async def search_match_job(skills_query: str, experience_queries: list, years_of_experience: int, target_salary: int, uid: str):
     dense_index = pc.Index(index_name)
     
-    # 1. Create a unified base filter
-    base_filter = {
-        "$and": [
-            # Experience condition: Job min experience <= Candidate's years of experience
-            {"min_experience_years": {"$lte": years_of_experience}},
-            
-            # Salary condition: (Job has NO salary) OR (Job max salary >= Candidate's target salary)
-            {"$or": [
-                {"has_salary": {"$eq": False}}, 
-                {"max_salary": {"$gte": target_salary}} 
-            ]}
-        ]
-    }
+    # 1. Create a unified base filter list
+    base_conditions = [
+        # Experience condition: Job min experience <= Candidate's years of experience
+        {"min_experience_years": {"$lte": float(years_of_experience)}},
+        
+        # Salary condition: (Job has NO salary) OR (Job max salary >= Candidate's target salary)
+        {"$or": [
+            {"has_salary": {"$eq": False}}, 
+            {"max_salary": {"$gte": float(target_salary)}} 
+        ]}
+    ]
     
     # 2. Apply to Skills Filter
     skills_filter = {
         "$and": [
-            {"chunk_type": {"$eq": "skills"}},
-            base_filter
-        ]
+            {"chunk_type": {"$eq": "skills"}}
+        ] + base_conditions
     }
     
     # 3. Apply to Responsibilities Filter
     resp_filter = {
         "$and": [
-            {"chunk_type": {"$eq": "responsibilities"}},
-            base_filter
-        ]
+            {"chunk_type": {"$eq": "responsibilities"}}
+        ] + base_conditions
     }
 
     all_hit_lists = []
 
     async def do_search(query_text, search_filter, top_k):
-        result = await asyncio.to_thread(
-            dense_index.search,
-            namespace=uid,
-            top_k=top_k,
-            inputs={"text": query_text},
-            filter=search_filter,
-            rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
-        )
-        return extract_hits(result)
+        max_retries = 3
+        for attempt in range(max_retries):
+            result = await asyncio.to_thread(
+                dense_index.search,
+                namespace=uid,
+                top_k=top_k,
+                inputs={"text": query_text},
+                filter=search_filter,
+                rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
+            )
+            hits = extract_hits(result)
+            if hits:
+                return hits
+            if attempt < max_retries - 1:
+                print(f"WARNING: 0 hits returned, retrying {attempt + 1}/{max_retries} for query: {query_text[:30]}...")
+                await asyncio.sleep(2)
+        return []
 
     tasks = []
 
