@@ -119,9 +119,10 @@ from services.job_fetcher import fetch_job_list
 from services.pinecone_service import embed_job_data
 
 @pytest.mark.asyncio
-@patch("services.job_fetcher.client.search")
-async def test_job_fetching_logic(mock_search):
-    mock_search.return_value = {
+@patch("services.job_fetcher.httpx.AsyncClient.get")
+async def test_job_fetching_logic(mock_get):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
         "jobs_results": [
             {
                 "job_id": "1",
@@ -132,6 +133,7 @@ async def test_job_fetching_logic(mock_search):
             }
         ]
     }
+    mock_get.return_value = mock_response
     
     result = await fetch_job_list(["SE"], "Malaysia", "my")
     assert len(result) == 1
