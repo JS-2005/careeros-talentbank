@@ -300,7 +300,7 @@
               <div class="score-circle-outer" [class.high-match]="(job.logical_match_score || 0) >= 80"
                 [class.mid-match]="(job.logical_match_score || 0) >= 60 && (job.logical_match_score || 0) < 80"
                 [class.low-match]="(job.logical_match_score || 0) < 60">
-                <span class="score-percentage">{{ job.logical_match_score }}%</span>
+                <span class="score-percentage">{{ job.logical_match_score || 0 }}%</span>
                 <span class="score-label">Match</span>
               </div>
 
