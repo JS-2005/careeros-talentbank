@@ -378,11 +378,11 @@
             <p class="alert-desc">
               Your profile is missing
               <ng-container *ngIf="selectedJob.unmatched_mandatory_skills?.length">
-                key skills such as <strong>{{ selectedJob.unmatched_mandatory_skills.slice(0, 4).join(', ') }}</strong><ng-container *ngIf="selectedJob.unmatched_mandatory_skills.length > 4"> and {{ selectedJob.unmatched_mandatory_skills.length - 4 }} more</ng-container>
+                key skills such as <strong>{{ selectedJob.unmatched_mandatory_skills!.slice(0, 4).join(', ') }}</strong><ng-container *ngIf="selectedJob.unmatched_mandatory_skills!.length > 4"> and {{ selectedJob.unmatched_mandatory_skills!.length - 4 }} more</ng-container>
               </ng-container>
               <ng-container *ngIf="selectedJob.unmatched_mandatory_skills?.length && selectedJob.unmatched_responsibilities?.length"> and </ng-container>
               <ng-container *ngIf="selectedJob.unmatched_responsibilities?.length">
-                {{ selectedJob.unmatched_responsibilities.length }} core {{ selectedJob.unmatched_responsibilities.length === 1 ? 'responsibility' : 'responsibilities' }}
+                {{ selectedJob.unmatched_responsibilities!.length }} core {{ selectedJob.unmatched_responsibilities!.length === 1 ? 'responsibility' : 'responsibilities' }}
               </ng-container>
               required for this role.
             </p>
