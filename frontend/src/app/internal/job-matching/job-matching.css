@@ -1135,6 +1135,12 @@
   color: var(--color-danger);
 }
 
+.dealbreaker-alert.skill-gap-warning {
+  background-color: rgba(245, 158, 11, 0.06);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #b45309;
+}
+
 .dealbreaker-alert i {
   font-size: 22px;
   margin-top: 2px;

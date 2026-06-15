@@ -1,35 +1,43 @@
 import asyncio
 import hashlib
-import serpapi
+import httpx
 from core.config import settings
-
-client = serpapi.Client(api_key=settings.SERPAPI_API_KEY)
 
 MAX_JOBS_PER_REQUEST = 15  # Keeps total Gemma calls ≤ 31
 
-def search_single_role(job_role, country, country_abbr, state, is_intern):
+async def search_single_role_async(job_role, country, country_abbr, state, is_intern, client: httpx.AsyncClient):
     if is_intern:
         job_role = f"{job_role} internship"
 
-    return client.search({
+    url = "https://serpapi.com/search.json"
+    params = {
         "engine": "google_jobs",
         "q": f"{job_role} in {state}" if state else job_role,
         "location": country,
         "google_domain": "google.com",
         "gl": country_abbr,
         "hl": "en",
-    })
+        "api_key": settings.SERPAPI_API_KEY
+    }
+    
+    try:
+        response = await client.get(url, params=params, timeout=30.0)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error fetching from SerpApi for role '{job_role}': {e}")
+        return {}
 
 async def fetch_job_list(target_job_role: list[str], country: str, country_abbr: str, state: str | None = None, is_intern: bool = False):
     all_clean_match_jobs = []
     seen_job_ids = set()
 
-    loop = asyncio.get_running_loop()
-    # Fire all searches concurrently, then process results
-    results = await asyncio.gather(*[
-        loop.run_in_executor(None, search_single_role, role, country, country_abbr, state, is_intern)
-        for role in target_job_role
-    ], return_exceptions=True)
+    # Fire all searches concurrently using httpx.AsyncClient
+    async with httpx.AsyncClient() as client:
+        results = await asyncio.gather(*[
+            search_single_role_async(role, country, country_abbr, state, is_intern, client)
+            for role in target_job_role
+        ], return_exceptions=True)
 
     for role, matching_jobs in zip(target_job_role, results):
         if len(all_clean_match_jobs) >= MAX_JOBS_PER_REQUEST:
