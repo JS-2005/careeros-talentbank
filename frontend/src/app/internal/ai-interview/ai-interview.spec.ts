@@ -1,5 +1,3 @@
-import { Internal } from '../internal';
-import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AiInterview } from './ai-interview';
@@ -11,7 +9,6 @@ describe('AiInterview', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AiInterview],
-      providers: [provideRouter([]), { provide: Internal, useValue: { toggleSidebar: () => {} } }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AiInterview);

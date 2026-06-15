@@ -361,31 +361,12 @@
           </span>
         </div>
 
-        <!-- Credential Disqualifier: only shows for actual hard-credential mismatches (degree, license, clearance, years) -->
-        <div class="dealbreaker-alert" *ngIf="selectedJob.has_credential_disqualifier">
+        <!-- Dealbreaker warning if score is low -->
+        <div class="dealbreaker-alert" *ngIf="selectedJob.logical_match_score < 50">
           <i class="bx bx-error-circle"></i>
           <div>
-            <h4 class="alert-title">Credential Requirement Not Met</h4>
-            <p class="alert-desc">This role requires a formal credential (e.g., degree, license, clearance, or years of experience) that your profile does not currently satisfy.</p>
-          </div>
-        </div>
-
-        <!-- Significant Skill Gaps: shows when score is low but no credential disqualifier -->
-        <div class="dealbreaker-alert skill-gap-warning" *ngIf="selectedJob.logical_match_score < 50 && !selectedJob.has_credential_disqualifier">
-          <i class="bx bx-error-circle"></i>
-          <div>
-            <h4 class="alert-title">Significant Skill Gaps</h4>
-            <p class="alert-desc">
-              Your profile is missing
-              <ng-container *ngIf="selectedJob.unmatched_mandatory_skills?.length">
-                key skills such as <strong>{{ selectedJob.unmatched_mandatory_skills!.slice(0, 4).join(', ') }}</strong><ng-container *ngIf="selectedJob.unmatched_mandatory_skills!.length > 4"> and {{ selectedJob.unmatched_mandatory_skills!.length - 4 }} more</ng-container>
-              </ng-container>
-              <ng-container *ngIf="selectedJob.unmatched_mandatory_skills?.length && selectedJob.unmatched_responsibilities?.length"> and </ng-container>
-              <ng-container *ngIf="selectedJob.unmatched_responsibilities?.length">
-                {{ selectedJob.unmatched_responsibilities!.length }} core {{ selectedJob.unmatched_responsibilities!.length === 1 ? 'responsibility' : 'responsibilities' }}
-              </ng-container>
-              required for this role.
-            </p>
+            <h4 class="alert-title">Dealbreaker Gap Detected</h4>
+            <p class="alert-desc">Your profile has multiple missing core skills that are mandatory for this role.</p>
           </div>
         </div>
 

@@ -40,9 +40,3 @@ class JobRequirements(BaseModel):
         default=None,
         description="The structured extraction of the salary information."
     )
-
-class ExtractedJobInfo(JobRequirements):
-    job_id: str = Field(description="The exact job_id provided in the input.")
-
-class JobBatchRequirements(BaseModel):
-    results: List[ExtractedJobInfo] = Field(description="List of extracted job requirements corresponding to the input jobs.")

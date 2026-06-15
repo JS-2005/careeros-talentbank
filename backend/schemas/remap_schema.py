@@ -41,36 +41,15 @@ class RemapResult(BaseModel):
             "the core development requirements.'"
         )
     )
-    has_credential_disqualifier: bool = Field(
-        default=False,
+    has_dealbreaker_gap: bool = Field(
         description=(
-            "CREDENTIAL-ONLY Boolean. This field is about FORMAL CREDENTIALS, never about skills or responsibilities. "
-            "Set True ONLY when the candidate is missing a hard credential that cannot be learned on the job: "
-            "1) A mandatory university Degree (e.g., 'Must have a Bachelor's in CS' and candidate has no degree), "
-            "2) A legally required License or Certification (e.g., CPA, Medical License, Bar Admission), "
-            "3) A government Security Clearance, "
-            "4) A severe structural years-of-experience deficit (e.g., JD requires 10+ years, candidate has 1 year). "
-            "\n\nCRITICAL — The following must ALWAYS return False: "
-            "missing programming languages, missing frameworks, missing tools, missing software skills, "
-            "missing technical skills, missing soft skills, missing daily job responsibilities, "
-            "missing domain knowledge. Even if the candidate lacks EVERY SINGLE required skill, this MUST be False. "
-            "\n\nExamples: "
-            "• Candidate lacks Python, React, AWS, Docker, Kubernetes, and all 8 listed responsibilities → False "
-            "• Candidate has 0 matching skills out of 15 required → False "
-            "• Candidate has no experience in the required industry → False "
-            "• Candidate lacks a required CPA license → True "
-            "• JD says 'Must have PhD in Machine Learning', candidate has no PhD → True "
-            "• JD requires 8+ years experience, candidate has 2 years → True"
+            "Strict Boolean gate. Output True ONLY if the candidate is missing an absolute "
+            "administrative, legal, or structural prerequisite. Valid dealbreakers are strictly "
+            "limited to: missing a mandatory University Degree, lacking a required legal "
+            "License/Certification (e.g., CPA, RN), lacking required Security Clearance, or a "
+            "massive structural deficit in total years of experience (e.g., applying for a Senior "
+            "Director role with 0 years of experience). CRITICAL CONSTRAINT: You MUST output False "
+            "if the candidate is only missing technical skills, programming languages, software "
+            "tools, or daily job responsibilities. Never use missing skills as a dealbreaker."
         )
     )
-
-class RemapResultWithId(RemapResult):
-    job_id: str = Field(
-        description="The unique identifier of the job being evaluated."
-    )
-
-class BatchRemapResult(BaseModel):
-    results: list[RemapResultWithId] = Field(
-        description="A list containing the gap analysis results for multiple jobs."
-    )
-
