@@ -1574,3 +1574,12 @@
     justify-content: center;
   }
 }
+
+a.drawer-badge-item {
+  text-decoration: none;
+}
+
+a.drawer-badge-item:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}

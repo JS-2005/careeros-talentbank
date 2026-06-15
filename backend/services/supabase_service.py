@@ -30,7 +30,7 @@ async def store_data(data: Union[BaseModel, List[dict], dict], data_type: str, u
             supabase.table("user_data").upsert({
                 "user_id": uid,
                 "data": payload
-            }).execute()
+            }, on_conflict="user_id").execute()
             
         elif data_type in ["job_data", "final_job_data"]:
             is_final = (data_type == "final_job_data")
@@ -88,7 +88,7 @@ async def retrieve_data(type_retrieve: str, uid: str, job_id_list: List[str] = N
                 response = supabase.table("user_jobs").select("data").eq("user_id", uid).eq("is_final", False).execute()
                 jobs = [row["data"] for row in response.data]
                 # Re-apply target_job_role grouping lost by Postgres insertion ordering
-                jobs.sort(key=lambda x: (x.get('target_job_role') or ''))
+                jobs.sort(key=lambda x: x.get('target_job_role', ''))
                 return jobs
             else:
                 # Retrieve jobs with specific job_ids
@@ -104,7 +104,7 @@ async def retrieve_data(type_retrieve: str, uid: str, job_id_list: List[str] = N
             response = supabase.table("user_jobs").select("data").eq("user_id", uid).eq("is_final", True).execute()
             jobs = [row["data"] for row in response.data]
             # Re-apply logical_match_score sort
-            jobs.sort(key=lambda x: (x.get('logical_match_score') or 0), reverse=True)
+            jobs.sort(key=lambda x: x.get('logical_match_score', 0), reverse=True)
             return jobs
             
         else:

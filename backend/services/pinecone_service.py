@@ -5,7 +5,16 @@ from pinecone import Pinecone
 from core.config import settings
 
 
-pc = Pinecone (api_key=settings.PINECONE_API_KEY)
+pc = None
+
+def get_pinecone_client():
+    """Create Pinecone lazily so the backend can still run when Pinecone is optional."""
+    global pc
+    if not settings.PINECONE_API_KEY:
+        raise ValueError("PINECONE_API_KEY is not configured; skipping Pinecone semantic boost")
+    if pc is None:
+        pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+    return pc
 
 # create index 
 index_name = "job-matching-index"
@@ -13,8 +22,18 @@ index_name = "job-matching-index"
 # embed job infomation
 async def embed_job_data(job_data: list[dict], uid: str):
 
-    if not pc.has_index(index_name):
-        pc.create_index_for_model(
+    # new job list enter, delete old job list
+    def delete_exist_data(dense_index):
+        try:
+            dense_index.delete(delete_all=True, namespace=uid)
+            print(f"Successfully deleted existing data for user: {uid}")
+        except Exception as e:
+            print(f"Fail to delete existing data in namespace {uid}")
+
+    pc_client = get_pinecone_client()
+
+    if not pc_client.has_index(index_name):
+        pc_client.create_index_for_model(
             name=index_name,
             cloud="aws",
             region="us-east-1",
@@ -24,14 +43,13 @@ async def embed_job_data(job_data: list[dict], uid: str):
             }
         )
 
-    dense_index = pc.Index(index_name)
+    dense_index = pc_client.Index(index_name)
 
-    # Always clear old data — delete is idempotent, saves a blocking describe_index_stats() call
-    try:
-        await asyncio.to_thread(dense_index.delete, delete_all=True, namespace=uid)
-        print(f"Cleared existing data for user: {uid}")
-    except Exception:
-        pass  # No data to delete or namespace doesn't exist — safe to continue
+    stats = dense_index.describe_index_stats()
+    ns = stats.namespaces.get(uid)
+    vector_count = getattr(ns, 'vector_count', 0) if ns else 0
+    if vector_count > 0:
+        delete_exist_data(dense_index)
 
     # list of all job record
     structure_job = []
@@ -117,12 +135,21 @@ async def embed_job_data(job_data: list[dict], uid: str):
 
         print(f"Batch {i} to {i+len(batch)} successfully upserted")
 
-    # Brief wait for serverless Pinecone to index upserted vectors (~1-2s typical)
-    await asyncio.sleep(2)
+    # Wait for vectors to be fully indexed (poll with backoff, max 10s)
+    for _ in range(5):
+        await asyncio.sleep(2)
+        stats = dense_index.describe_index_stats()
+        ns = stats.namespaces.get(uid)
+        if ns and getattr(ns, 'vector_count', 0) >= len(structure_job):
+            break
+
+    # view stats for index
+    stats = dense_index.describe_index_stats()
+    print (stats)
     print("Successfully executed embed_job_data")
 
 # organise user data before vector searching
-async def organise_user_data(user_data: dict, uid: str):
+def organise_user_data(user_data: dict, uid: str):
     if not user_data:
         raise ValueError("No user data provided to organise.")
 
@@ -147,7 +174,7 @@ async def organise_user_data(user_data: dict, uid: str):
     target_salary = user_data.get("expected_salary") or 0
 
     # 3. Pass granular data to search function
-    ranked_job_id = await search_match_job(
+    ranked_job_id = search_match_job(
         skills_query=skills_query, 
         experience_queries=experience_queries,
         years_of_experience=user_data.get("years_of_experience") or 0,
@@ -169,72 +196,67 @@ def extract_hits(result_obj):
     return hits
 
 # perform vector searching 
-async def search_match_job(skills_query: str, experience_queries: list, years_of_experience: int, target_salary: int, uid: str):
-    dense_index = pc.Index(index_name)
+def search_match_job(skills_query: str, experience_queries: list, years_of_experience: int, target_salary: int, uid: str):
+    pc_client = get_pinecone_client()
+    dense_index = pc_client.Index(index_name)
     
-    # 1. Create a unified base filter list
-    base_conditions = [
-        # Experience condition: Job min experience <= Candidate's years of experience
-        {"min_experience_years": {"$lte": float(years_of_experience)}},
-        
-        # Salary condition: (Job has NO salary) OR (Job max salary >= Candidate's target salary)
-        {"$or": [
-            {"has_salary": {"$eq": False}}, 
-            {"max_salary": {"$gte": float(target_salary)}} 
-        ]}
-    ]
+    # 1. Create a unified base filter
+    base_filter = {
+        "$and": [
+            # Experience condition: Job min experience <= Candidate's years of experience
+            {"min_experience_years": {"$lte": years_of_experience}},
+            
+            # Salary condition: (Job has NO salary) OR (Job max salary >= Candidate's target salary)
+            {"$or": [
+                {"has_salary": {"$eq": False}}, 
+                {"max_salary": {"$gte": target_salary}} 
+            ]}
+        ]
+    }
     
     # 2. Apply to Skills Filter
     skills_filter = {
         "$and": [
-            {"chunk_type": {"$eq": "skills"}}
-        ] + base_conditions
+            {"chunk_type": {"$eq": "skills"}},
+            base_filter
+        ]
     }
     
     # 3. Apply to Responsibilities Filter
     resp_filter = {
         "$and": [
-            {"chunk_type": {"$eq": "responsibilities"}}
-        ] + base_conditions
+            {"chunk_type": {"$eq": "responsibilities"}},
+            base_filter
+        ]
     }
 
     all_hit_lists = []
 
-    async def do_search(query_text, search_filter, top_k):
-        max_retries = 3
-        for attempt in range(max_retries):
-            result = await asyncio.to_thread(
-                dense_index.search,
-                namespace=uid,
-                top_k=top_k,
-                inputs={"text": query_text},
-                filter=search_filter,
-                rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
-            )
-            hits = extract_hits(result)
-            if hits:
-                return hits
-            if attempt < max_retries - 1:
-                print(f"WARNING: 0 hits returned, retrying {attempt + 1}/{max_retries} for query: {query_text[:30]}...")
-                await asyncio.sleep(2)
-        return []
-
-    tasks = []
-
     # 1. Search Skills
     if skills_query.strip():
-        tasks.append(do_search(skills_query, skills_filter, 5))
+        skills_result = dense_index.search(
+            namespace=uid,
+            top_k=20,
+            inputs={"text": skills_query},
+            filter=skills_filter,
+            rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
+        )
+        hits = extract_hits(skills_result)
+        all_hit_lists.append(hits)
 
     # 2. Search EACH Experience against Responsibilities
     for exp_query in experience_queries:
         if not exp_query.strip():
             continue
-        tasks.append(do_search(exp_query, resp_filter, 5))
-
-    # Wait for all searches to complete concurrently
-    results = await asyncio.gather(*tasks)
-    
-    for hits in results:
+            
+        exp_result = dense_index.search(
+            namespace=uid,
+            top_k=10, # Keep top_k lower per experience to focus on best matches
+            inputs={"text": exp_query},
+            filter=resp_filter,
+            rerank={"model":"bge-reranker-v2-m3", "top_n": 5, "rank_fields": ["chunk_text"]}
+        )
+        hits = extract_hits(exp_result)
         all_hit_lists.append(hits)
 
     # 3. Dynamic RRF Fusion across all searches

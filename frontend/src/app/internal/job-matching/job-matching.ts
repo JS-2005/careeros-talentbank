@@ -8,15 +8,16 @@ import { environment } from '../../../environments/environment';
 
 export interface Job {
   job_id: string;
+  target_job_role?: string;
   title: string;
   company_name: string;
   location: string;
   salary?: string;
   salary_parsed?: {
-    currency: string;
+    currency?: string | null;
     min_salary: number;
     max_salary?: number;
-    pay_period: string;
+    pay_period?: string | null;
   };
   schedule_type?: string;
   work_from_home?: boolean;
@@ -29,6 +30,9 @@ export interface Job {
   unmatched_mandatory_skills?: string[];
   unmatched_responsibilities?: string[];
   matched_optional_skills?: string[];
+  source_link?: string;
+  posted_at?: string;
+  matching_method?: string;
   isExtracting?: boolean;
   extractionFailed?: boolean;
 }
@@ -117,6 +121,7 @@ export class JobMatching implements OnInit {
   // Search filter states
   country = 'Malaysia';
   state = '';
+  manualSearchQuery = '';
   expectedSalary = 0;
   isIntern = false;
 
@@ -158,21 +163,21 @@ export class JobMatching implements OnInit {
       return {
         role: group.role,
         jobs: group.jobs.filter(job => 
-          job.title.toLowerCase().includes(this.topbarSearchQuery) ||
-          job.company_name.toLowerCase().includes(this.topbarSearchQuery) ||
-          job.location.toLowerCase().includes(this.topbarSearchQuery) ||
-          job.description.toLowerCase().includes(this.topbarSearchQuery)
+          (job.title || '').toLowerCase().includes(this.topbarSearchQuery) ||
+          (job.company_name || '').toLowerCase().includes(this.topbarSearchQuery) ||
+          (job.location || '').toLowerCase().includes(this.topbarSearchQuery) ||
+          (job.description || '').toLowerCase().includes(this.topbarSearchQuery)
         )
       };
     }).filter(group => group.jobs.length > 0);
 
     // Filter remapResults
     this.filteredRemapResults = this.remapResults.filter(job => 
-      job.title.toLowerCase().includes(this.topbarSearchQuery) ||
-      job.company_name.toLowerCase().includes(this.topbarSearchQuery) ||
-      job.location.toLowerCase().includes(this.topbarSearchQuery) ||
-      job.description.toLowerCase().includes(this.topbarSearchQuery) ||
-      job.remap_description?.toLowerCase().includes(this.topbarSearchQuery)
+      (job.title || '').toLowerCase().includes(this.topbarSearchQuery) ||
+      (job.company_name || '').toLowerCase().includes(this.topbarSearchQuery) ||
+      (job.location || '').toLowerCase().includes(this.topbarSearchQuery) ||
+      (job.description || '').toLowerCase().includes(this.topbarSearchQuery) ||
+      (job.remap_description || '').toLowerCase().includes(this.topbarSearchQuery)
     );
 
     this.cdr.detectChanges();
@@ -184,80 +189,8 @@ export class JobMatching implements OnInit {
     'Brazil', 'Mexico', 'South Africa'
   ];
 
-  // Raw mock database before AI processing
-  private mockRawJobs: Job[] = [
-    {
-      job_id: 'job_001',
-      title: 'Software Engineer Intern',
-      company_name: 'TechCorp Solutions',
-      location: 'Kuala Lumpur, Malaysia',
-      salary: 'RM 3,000',
-      salary_parsed: { currency: 'RM', min_salary: 3000, pay_period: 'month' },
-      schedule_type: 'Full-time',
-      work_from_home: true,
-      description: 'We are looking for a passionate Software Engineer Intern to join our web team. You will work on building clean, high-performance user interfaces using Angular and TypeScript.',
-      key_responsibilities: [
-        'Collaborate with senior developers to design and implement new UI features.',
-        'Write robust, testable, and clean code.',
-        'Participate in code reviews and agile ceremonies.'
-      ],
-      core_skills: ['Angular', 'TypeScript', 'HTML5', 'CSS3'],
-      soft_skills: ['Teamwork', 'Communication', 'Problem Solving']
-    },
-    {
-      job_id: 'job_002',
-      title: 'Frontend Developer',
-      company_name: 'WebStudio Asia',
-      location: 'Selangor, Malaysia',
-      salary: 'RM 5,500',
-      salary_parsed: { currency: 'RM', min_salary: 5500, pay_period: 'month' },
-      schedule_type: 'Full-time',
-      work_from_home: false,
-      description: 'Join our creative studio as a Frontend Developer. You will turn beautiful Figma designs into interactive, high-quality web applications.',
-      key_responsibilities: [
-        'Translate Figma design mockups into pixel-perfect web pages.',
-        'Collaborate with UX/UI designers to improve user experience.',
-        'Ensure cross-browser compatibility and mobile responsiveness.'
-      ],
-      core_skills: ['JavaScript', 'HTML', 'CSS', 'Sass'],
-      soft_skills: ['Creative Thinking', 'Adaptability']
-    },
-    {
-      job_id: 'job_003',
-      title: 'Data Analyst Intern',
-      company_name: 'FinanceFlow Systems',
-      location: 'Singapore',
-      salary: 'S$ 1,500',
-      salary_parsed: { currency: 'S$', min_salary: 1500, pay_period: 'month' },
-      schedule_type: 'Internship',
-      work_from_home: false,
-      description: 'Looking for a Data Analyst Intern to help audit our financial data, preprocess raw transactions, and create analytics dashboards.',
-      key_responsibilities: [
-        'Collect and clean raw data from financial records.',
-        'Build automated dashboards for quarterly reports.'
-      ],
-      core_skills: ['Data Cleaning', 'Excel', 'Data Visualization'],
-      soft_skills: ['Analytical Mindset', 'Attention to Detail']
-    },
-    {
-      job_id: 'job_004',
-      title: 'Full Stack Engineer',
-      company_name: 'DevGroup Australia',
-      location: 'Sydney, Australia',
-      salary: 'A$ 85,000',
-      salary_parsed: { currency: 'A$', min_salary: 85000, pay_period: 'year' },
-      schedule_type: 'Full-time',
-      work_from_home: true,
-      description: 'DevGroup is hiring a Full Stack Developer to help build our cloud SaaS platforms, design schemas, and build backend APIs.',
-      key_responsibilities: [
-        'Develop robust server-side APIs.',
-        'Connect backend services with premium Angular dashboards.',
-        'Design database schemas and optimize query speeds.'
-      ],
-      core_skills: ['TypeScript', 'Node.js', 'Express', 'Angular'],
-      soft_skills: ['Self-management', 'Critical thinking']
-    }
-  ];
+  // Production note: job matching uses only live SerpAPI/backend data.
+
 
   get currencySymbol(): string {
     const currencyMap: { [key: string]: string } = {
@@ -293,6 +226,7 @@ export class JobMatching implements OnInit {
     this.currentTab = 'search';
     this.expectedSalary = 0;
     this.state = '';
+    this.manualSearchQuery = '';
     this.topbarSearchQuery = '';
     this.filterJobs();
     this.cdr.detectChanges();
@@ -301,6 +235,11 @@ export class JobMatching implements OnInit {
   async onSubmit() {
     if (!this.country) {
       alert('Please select a country.');
+      return;
+    }
+
+    if (!this.profileResumeUrl && !this.manualSearchQuery.trim()) {
+      alert('Please upload a resume in your profile or enter a target role / keyword.');
       return;
     }
 
@@ -347,6 +286,7 @@ export class JobMatching implements OnInit {
       if (this.state) formData.append('state', this.state);
       formData.append('is_intern', String(this.isIntern));
       if (this.expectedSalary > 0) formData.append('expected_salary', String(this.expectedSalary));
+      if (this.manualSearchQuery.trim()) formData.append('search_query', this.manualSearchQuery.trim());
       if (file) formData.append('file', file);
 
       const searchRes = await fetch(`${environment.backendUrl}/api/v1/search-initial-jobs`, {
@@ -375,57 +315,37 @@ export class JobMatching implements OnInit {
         return;
       }
 
-      // Setup initial raw jobs as extracting in groups
-      this.isEnhancing = true;
+      // 4. Backend now returns SerpAPI results already structured by the fast parser.
+      // This removes the old one-request-per-job Gemma extraction bottleneck.
+      this.isEnhancing = false;
+      const extractedJobs: Job[] = rawJobs.map((job: any) => ({
+        ...job,
+        isExtracting: false,
+        extractionFailed: false,
+        key_responsibilities: job.key_responsibilities || [],
+        core_skills: job.core_skills || [],
+        soft_skills: job.soft_skills || []
+      }));
+
       const groupsMap = new Map<string, Job[]>();
-      for (const j of rawJobs) {
+      for (const j of extractedJobs) {
         const role = j.target_job_role || 'General';
         if (!groupsMap.has(role)) {
           groupsMap.set(role, []);
         }
-        groupsMap.get(role)!.push({ ...j, isExtracting: true });
+        groupsMap.get(role)!.push(j);
       }
       this.extractedJobsGroups = Array.from(groupsMap.entries()).map(([role, jobs]) => ({ role, jobs }));
       this.filterJobs();
       this.cdr.detectChanges();
 
-      // 4. Concurrently run Gemma extract-single-job for each job, updating their UI status as they finish
-      const extractedJobs: Job[] = [];
-      
-      const extractionPromises = rawJobs.map(async (job) => {
-        try {
-          const extractRes = await fetch(`${environment.backendUrl}/api/v1/extract-single-job`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ raw_job: job })
-          });
-
-          if (!extractRes.ok) {
-            throw new Error('Extraction failed');
-          }
-
-          const extractedJob = await extractRes.json();
-          extractedJob.isExtracting = false;
-          extractedJob.extractionFailed = false;
-
-          // Update UI card extraction status
-          this.updateJobInGroups(extractedJob);
-          extractedJobs.push(extractedJob);
-        } catch (err) {
-          console.error(`Failed to extract job ${job.job_id}:`, err);
-          const failedJob = { ...job, isExtracting: false, extractionFailed: true };
-          this.updateJobInGroups(failedJob);
-          extractedJobs.push(failedJob);
-        }
+      if (!userDataDict || Object.keys(userDataDict).length === 0) {
+        this.currentTab = 'search';
+        this.filterJobs();
         this.cdr.detectChanges();
-      });
+        return;
+      }
 
-      // Wait for all extractions to finish
-      await Promise.all(extractionPromises);
-      this.isEnhancing = false;
       this.isScoring = true;
       this.cdr.detectChanges();
 
@@ -437,7 +357,7 @@ export class JobMatching implements OnInit {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          user_data_dict: userDataDict,
+          user_data_dict: userDataDict || {},
           organised_job_result: extractedJobs
         })
       });

@@ -1,91 +1,140 @@
 import asyncio
-import hashlib
-import httpx
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
+
+import serpapi
 from core.config import settings
+from services.job_parser import normalise_job_record
 
-MAX_JOBS_PER_REQUEST = 15  # Keeps total Gemma calls ≤ 31
+client = serpapi.Client(api_key=settings.SERPAPI_API_KEY)
 
-async def search_single_role_async(job_role, country, country_abbr, state, is_intern, client: httpx.AsyncClient):
-    if is_intern:
-        job_role = f"{job_role} internship"
+MAX_JOBS_PER_REQUEST = max(1, int(getattr(settings, "JOB_SEARCH_MAX_RESULTS", 12) or 12))
+MAX_ROLES_PER_SEARCH = max(1, int(getattr(settings, "JOB_SEARCH_MAX_ROLES", 3) or 3))
+SERPAPI_TIMEOUT_SECONDS = int(getattr(settings, "SERPAPI_TIMEOUT_SECONDS", 25) or 25)
+DATE_CHIP = getattr(settings, "JOB_SEARCH_DATE_CHIP", "date_posted:month") or "date_posted:month"
 
-    url = "https://serpapi.com/search.json"
+_executor = ThreadPoolExecutor(max_workers=MAX_ROLES_PER_SEARCH)
+
+
+def _dedupe_roles(roles: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for role in roles or []:
+        role = " ".join(str(role or "").split())
+        if not role:
+            continue
+        key = role.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(role)
+        if len(cleaned) >= MAX_ROLES_PER_SEARCH:
+            break
+    return cleaned
+
+
+def _build_query(job_role: str, state: str | None, country: str, is_intern: bool) -> str:
+    role = job_role.strip()
+    parts = [role]
+    if is_intern and "intern" not in role.lower():
+        parts.append("internship")
+    parts.append("jobs")
+    if state:
+        parts.append(f"in {state}")
+    elif country:
+        parts.append(f"in {country}")
+    return " ".join(parts)
+
+
+def search_single_role(job_role: str, country: str, country_abbr: str, state: str | None, is_intern: bool) -> dict[str, Any]:
+    location = f"{state}, {country}" if state else country
     params = {
         "engine": "google_jobs",
-        "q": f"{job_role} in {state}" if state else job_role,
-        "location": country,
+        "q": _build_query(job_role, state, country, is_intern),
+        "location": location,
         "google_domain": "google.com",
         "gl": country_abbr,
         "hl": "en",
-        "api_key": settings.SERPAPI_API_KEY
     }
-    
-    try:
-        response = await client.get(url, params=params, timeout=30.0)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        print(f"Error fetching from SerpApi for role '{job_role}': {e}")
-        return {}
+    # Date chips reduce stale/noisy results. If Google returns no results with chips,
+    # fetch_job_list will automatically retry without it.
+    if DATE_CHIP:
+        params["chips"] = DATE_CHIP
+    return client.search(params)
+
+
+def _search_single_role_no_chip(job_role: str, country: str, country_abbr: str, state: str | None, is_intern: bool) -> dict[str, Any]:
+    location = f"{state}, {country}" if state else country
+    return client.search({
+        "engine": "google_jobs",
+        "q": _build_query(job_role, state, country, is_intern),
+        "location": location,
+        "google_domain": "google.com",
+        "gl": country_abbr,
+        "hl": "en",
+    })
+
+
+async def _run_search_with_timeout(loop, fn, *args):
+    return await asyncio.wait_for(loop.run_in_executor(_executor, fn, *args), timeout=SERPAPI_TIMEOUT_SECONDS)
+
 
 async def fetch_job_list(target_job_role: list[str], country: str, country_abbr: str, state: str | None = None, is_intern: bool = False):
-    all_clean_match_jobs = []
-    seen_job_ids = set()
+    all_clean_match_jobs: list[dict[str, Any]] = []
+    seen_job_ids: set[str] = set()
+    roles = _dedupe_roles(target_job_role)
 
-    # Fire all searches concurrently using httpx.AsyncClient
-    async with httpx.AsyncClient() as client:
-        results = await asyncio.gather(*[
-            search_single_role_async(role, country, country_abbr, state, is_intern, client)
-            for role in target_job_role
-        ], return_exceptions=True)
+    if not roles:
+        return []
 
-    for role, matching_jobs in zip(target_job_role, results):
+    loop = asyncio.get_running_loop()
+
+    # Fire a small number of SerpAPI searches concurrently. This keeps the total
+    # search phase usually within seconds instead of waiting role-by-role.
+    results = await asyncio.gather(*[
+        _run_search_with_timeout(loop, search_single_role, role, country, country_abbr, state, is_intern)
+        for role in roles
+    ], return_exceptions=True)
+
+    # If date chips over-filtered a role, retry that role once without chips.
+    retry_tasks = []
+    retry_roles = []
+    for role, result in zip(roles, results):
+        if isinstance(result, Exception) or not (result or {}).get("jobs_results"):
+            retry_roles.append(role)
+            retry_tasks.append(_run_search_with_timeout(loop, _search_single_role_no_chip, role, country, country_abbr, state, is_intern))
+    if retry_tasks:
+        retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+        retry_map = dict(zip(retry_roles, retry_results))
+    else:
+        retry_map = {}
+
+    for role, matching_jobs in zip(roles, results):
         if len(all_clean_match_jobs) >= MAX_JOBS_PER_REQUEST:
             break
+
+        if isinstance(matching_jobs, Exception) or not (matching_jobs or {}).get("jobs_results"):
+            matching_jobs = retry_map.get(role)
+
         if isinstance(matching_jobs, Exception):
             print(f"Error fetching jobs for '{role}': {matching_jobs}")
             continue
 
-        # check if the fetch was successful
-        if matching_jobs and "jobs_results" in matching_jobs:
-            for job in matching_jobs["jobs_results"]:
-                job_id = job.get("job_id")
-                title = job.get("title", "")
-                company_name = job.get("company_name", "")
+        for job in (matching_jobs or {}).get("jobs_results", []):
+            clean_job = normalise_job_record(job, target_role=role)
+            job_id = clean_job.get("job_id")
+            title = clean_job.get("title")
+            company_name = clean_job.get("company_name")
 
-                # Semantic key for synthetic ID generation if needed
-                semantic_key = f"{title}-{company_name}".lower()
+            if not job_id or job_id in seen_job_ids:
+                continue
+            if not title or not company_name:
+                continue
 
-                # Generate a synthetic job_id if missing so it doesn't break Pinecone
-                if not job_id:
-                    # Include description hash to reduce collision probability
-                    desc = job.get("description", "")[:100]
-                    unique_key = f"{semantic_key}-{desc}"
-                    job_id = hashlib.md5(unique_key.encode('utf-8')).hexdigest()
+            seen_job_ids.add(job_id)
+            all_clean_match_jobs.append(clean_job)
+            if len(all_clean_match_jobs) >= MAX_JOBS_PER_REQUEST:
+                break
 
-                # Deduplicate by job_id
-                if job_id in seen_job_ids:
-                    continue
-                
-                if title and company_name:
-                    seen_job_ids.add(job_id)
-                    
-                    # Create the clean dictionary AND inject the 'target_job_role'
-                    clean_job = {
-                        "target_job_role": role,
-                        "job_id": job_id,
-                        "title": job.get("title"),
-                        "company_name": job.get("company_name"),
-                        "location": job.get("location"),
-                        "salary": (job.get("detected_extensions") or {}).get("salary"),
-                        "work_from_home": (job.get("detected_extensions") or {}).get("work_from_home"),
-                        "schedule_type": (job.get("detected_extensions") or {}).get("schedule_type"),
-                        "source_link": job.get("source_link"),
-                        "description": job.get("description")
-                    }
-                    all_clean_match_jobs.append(clean_job)
-                if len(all_clean_match_jobs) >= MAX_JOBS_PER_REQUEST:
-                    break
-
-    print(f"Successfully searched jobs concurrently")
+    print(f"Successfully searched and parsed {len(all_clean_match_jobs)} jobs from SerpAPI")
     return all_clean_match_jobs[:MAX_JOBS_PER_REQUEST]

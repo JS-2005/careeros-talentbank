@@ -1,4 +1,3 @@
-import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Internal } from './internal';
@@ -10,7 +9,6 @@ describe('Internal', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [Internal],
-      providers: [provideRouter([])],
     }).compileComponents();
 
     fixture = TestBed.createComponent(Internal);

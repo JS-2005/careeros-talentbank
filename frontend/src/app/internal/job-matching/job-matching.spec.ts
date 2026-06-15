@@ -1,5 +1,3 @@
-import { Internal } from '../internal';
-import { provideRouter } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { JobMatching } from './job-matching';
@@ -11,7 +9,6 @@ describe('JobMatching', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [JobMatching],
-      providers: [provideRouter([]), { provide: Internal, useValue: { toggleSidebar: () => {} } }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(JobMatching);

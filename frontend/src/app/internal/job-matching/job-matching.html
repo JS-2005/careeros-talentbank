@@ -37,7 +37,7 @@
     <!-- Hero Section -->
     <div class="hero-section">
       <h1 class="hero-title">Discover your perfect job matches.</h1>
-      <p class="hero-subtitle">Let AI scan the web using the resume in your profile to find the best roles for you.</p>
+      <p class="hero-subtitle">Fast SerpAPI search + structured extraction + AI compatibility scoring in one streamlined flow.</p>
     </div>
 
     <!-- Advanced Search Card -->
@@ -48,8 +48,7 @@
           <i class="bx bx-error-circle alert-icon"></i>
           <div class="alert-text-content">
             <h4 class="alert-title">No Resume Linked</h4>
-            <p class="alert-desc">We couldn't find a resume PDF in your profile. Please upload one in the Profile page
-              first.</p>
+            <p class="alert-desc">You can still run a manual job search below, but AI recommendations are strongest when a resume is linked.</p>
           </div>
         </div>
         <a routerLink="/internal/profile" class="btn-profile-link">Go to Profile <i
@@ -62,11 +61,17 @@
         <div class="input-wrapper">
           <i class="bx bx-globe input-icon"></i>
           <input type="text" id="country" name="country" [(ngModel)]="country" required
-            placeholder="Country (e.g. Malaysia)" class="form-input" list="countryList"
-            [disabled]="!profileResumeUrl" />
+            placeholder="Country (e.g. Malaysia)" class="form-input" list="countryList" />
           <datalist id="countryList">
             <option *ngFor="let c of countries" [value]="c"></option>
           </datalist>
+        </div>
+
+        <!-- Manual Search Query -->
+        <div class="input-wrapper">
+          <i class="bx bx-briefcase input-icon"></i>
+          <input type="text" id="manualSearchQuery" name="manualSearchQuery" [(ngModel)]="manualSearchQuery"
+            placeholder="Optional target role / keyword, e.g. Software Engineer Intern" class="form-input" />
         </div>
 
         <!-- Profile Resume Status -->
@@ -87,12 +92,12 @@
         <!-- Buttons -->
         <div class="button-group">
           <button type="button" (click)="toggleAdvancedFilters()" class="filter-toggle-btn"
-            [class.active]="showAdvancedFilters" [disabled]="!profileResumeUrl">
+            [class.active]="showAdvancedFilters">
             <i class="bx bx-slider-alt"></i> Filters
           </button>
 
           <button type="submit" class="submit-search-btn"
-            [disabled]="isLoading || isEnhancing || isScoring || !profileResumeUrl">
+            [disabled]="isLoading || isEnhancing || isScoring || (!profileResumeUrl && !manualSearchQuery.trim())">
             <span *ngIf="!isLoading && !isEnhancing && !isScoring">Search</span>
             <span *ngIf="isLoading || isEnhancing || isScoring" class="loader-spinner"></span>
           </button>
@@ -139,13 +144,13 @@
 
       <h3 class="loading-stage-title">
         <span *ngIf="isLoading">Scanning the web for opportunities...</span>
-        <span *ngIf="isEnhancing">Gemma extracting deep job requirements...</span>
+        <span *ngIf="isEnhancing">Structuring job requirements...</span>
         <span *ngIf="isScoring">Analyzing and calculating compatibility score...</span>
       </h3>
       <p class="loading-stage-desc">
-        <span *ngIf="isLoading">Running SerpApi query based on your profile roles and expectations.</span>
-        <span *ngIf="isEnhancing">Reviewing responsibilities, mandatory core skills, and soft skills.</span>
-        <span *ngIf="isScoring">Running ReMAP semantic vector search and logic analyzer.</span>
+        <span *ngIf="isLoading">Running optimized SerpAPI Google Jobs queries based on your resume and search filters.</span>
+        <span *ngIf="isEnhancing">Parsing responsibilities, core skills, salary, and job metadata from SerpAPI fields.</span>
+        <span *ngIf="isScoring">Calculating compatibility score with fast ReMAP matching and optional semantic boost.</span>
       </p>
 
       <!-- Loading Progress Steps UI -->
@@ -157,7 +162,7 @@
         <div class="step-line" [class.done]="!isLoading && !isEnhancing"></div>
         <div class="step-item" [class.done]="hasSearched && !isLoading && !isEnhancing" [class.active]="isEnhancing">
           <span class="step-number">2</span>
-          <span class="step-text">AI Extract</span>
+          <span class="step-text">Fast Extract</span>
         </div>
         <div class="step-line" [class.done]="hasSearched && !isLoading && !isEnhancing && !isScoring"></div>
         <div class="step-item" [class.active]="isScoring">
@@ -199,6 +204,7 @@
               <div class="job-card-meta">
                 <span class="meta-item"><i class="bx bx-map"></i> {{ job.location }}</span>
                 <span class="meta-item" *ngIf="job.salary"><i class="bx bx-money"></i> {{ job.salary }}</span>
+                <span class="meta-item" *ngIf="job.posted_at"><i class="bx bx-calendar"></i> {{ job.posted_at }}</span>
               </div>
 
               <!-- Extraction Status footer -->
@@ -346,6 +352,8 @@
             selectedJob.schedule_type }}</span>
           <span class="drawer-badge-item" *ngIf="selectedJob.work_from_home"><i class="bx bx-home-alt"></i> Remote
             Friendly</span>
+          <a class="drawer-badge-item" *ngIf="selectedJob.source_link" [href]="selectedJob.source_link" target="_blank" rel="noopener"
+            (click)="$event.stopPropagation()"><i class="bx bx-link-external"></i> Apply / Source</a>
         </div>
       </div>
 
@@ -365,8 +373,8 @@
         <div class="dealbreaker-alert" *ngIf="selectedJob.logical_match_score < 50">
           <i class="bx bx-error-circle"></i>
           <div>
-            <h4 class="alert-title">Dealbreaker Gap Detected</h4>
-            <p class="alert-desc">Your profile has multiple missing core skills that are mandatory for this role.</p>
+            <h4 class="alert-title">Lower Match Detected</h4>
+            <p class="alert-desc">Your profile appears to miss several extracted core skills or responsibilities for this role.</p>
           </div>
         </div>
 
