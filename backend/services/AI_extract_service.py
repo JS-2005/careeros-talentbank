@@ -232,26 +232,14 @@ class AIOrganiser:
             - First, extract all responsibilities and skills from the JD, separating mandatory from optional.
             - Second, scan the candidate's entire profile for EACH mandatory requirement. If zero evidence is found, add it to the unmatched arrays.
             - Third, synthesize your findings into the single 'remap_description' sentence. State the critical gaps first, then briefly acknowledge the aligned strengths.
-            6. CREDENTIAL DISQUALIFIER RULE (has_credential_disqualifier):
-            This field is about FORMAL CREDENTIALS ONLY — it has NOTHING to do with skills, tools, frameworks, or responsibilities.
-            Set 'has_credential_disqualifier' to True ONLY if the candidate is missing one of these four hard credentials:
-              a) A mandatory university Degree explicitly required by the JD (e.g., "Must have Bachelor's in CS")
-              b) A legally required License or Certification (e.g., CPA, Medical License, Bar Admission)
-              c) A government Security Clearance
-              d) A severe structural years-of-experience deficit (e.g., JD requires 10+ years, candidate has 1 year)
-            For ALL other gaps — including missing programming languages, frameworks, tools, software, daily responsibilities, domain knowledge, soft skills — 'has_credential_disqualifier' MUST BE False.
-            Even if the candidate lacks every single required skill AND every listed responsibility, 'has_credential_disqualifier' MUST STILL BE False.
+            6. DEALBREAKER CONSTRAINT: You are strictly PROHIBITED from setting 'has_dealbreaker_gap' to True due to missing technical skills, programming languages, software tools, frameworks, or daily job responsibilities. You may ONLY use the dealbreaker flag if the candidate is missing a non-negotiable structural requirement (e.g., mandatory University Degree, legal License, Security Clearance, or severe deficit in total years of experience). Even if the candidate lacks every single required skill, 'has_dealbreaker_gap' MUST STILL BE FALSE.
             EXAMPLE EVALUATIONS:
-            - Candidate lacks Python, React, AWS, Docker, Kubernetes (all core skills). Candidate has a CS degree.
-            -> has_credential_disqualifier: False (skills are NOT credentials)
-            - Candidate is missing 8 out of 8 mandatory daily responsibilities.
-            -> has_credential_disqualifier: False (responsibilities are NOT credentials)
-            - Candidate has zero matching skills out of 15 required.
-            -> has_credential_disqualifier: False (skills are NOT credentials)
-            - Candidate lacks required CPA license.
-            -> has_credential_disqualifier: True (license IS a credential)
-            - JD requires PhD in Machine Learning, candidate has no PhD.
-            -> has_credential_disqualifier: True (degree IS a credential)
+            - Candidate lacks Python, React, and AWS (all core skills). Candidate has a CS degree. 
+            -> has_dealbreaker_gap: False
+            - Candidate is missing 5 mandatory daily responsibilities. 
+            -> has_dealbreaker_gap: False
+            - Candidate is applying for a role requiring a CPA license, but only has a high school diploma. 
+            -> has_dealbreaker_gap: True
 
             OUTPUT CONSTRAINT:
             You must return ONLY the strictly structured JSON matching the provided schema. Do not include markdown formatting, conversational filler, or explanations outside of the JSON object. When in doubt about whether a candidate possesses a skill, conservatively classify it as UNMATCHED."""
@@ -303,8 +291,8 @@ class AIOrganiser:
             # calculate logical match score
             logical_match_score = max(0, min(100, logical_match_score))
             
-            # Apply credential disqualifier override
-            if remap_analysis.has_credential_disqualifier:
+            # Apply dealbreaker override
+            if remap_analysis.has_dealbreaker_gap:
                 logical_match_score = 0
             
             # add new variable to dictionary
@@ -337,12 +325,7 @@ class AIOrganiser:
             2. STRICT EVIDENCE-BASED ANALYSIS: When determining if a candidate LACKS a requirement, you must base your decision ONLY on explicitly stated skills, technologies, and experience in the candidate's profile. If a specific technology is named in the JD, it is COMPLETELY MISSING unless that exact name appears.
             3. MANDATORY VS. OPTIONAL: Focus gap analysis strictly on core requirements. Ignore the absence of items explicitly marked as 'preferred' or 'optional' in the JD.
             4. THE CONSISTENCY MANDATE: There must be absolute alignment between your extracted data arrays and your final description sentence. You cannot mention a missing skill/responsibility in your final sentence unless it is explicitly listed in your unmatched arrays, and vice-versa.
-            5. CREDENTIAL DISQUALIFIER RULE (has_credential_disqualifier):
-            This field is about FORMAL CREDENTIALS ONLY — it has NOTHING to do with skills, tools, frameworks, or responsibilities.
-            Set 'has_credential_disqualifier' to True ONLY if the candidate is missing:
-              a) A mandatory university Degree, b) A legally required License/Certification, c) A Security Clearance, d) A severe structural years-of-experience deficit.
-            For ALL other gaps — including missing programming languages, frameworks, tools, software, daily responsibilities, domain knowledge — 'has_credential_disqualifier' MUST BE False.
-            Even if the candidate has ZERO matching skills and ZERO matching responsibilities, 'has_credential_disqualifier' MUST STILL BE False.
+            5. DEALBREAKER CONSTRAINT: You are strictly PROHIBITED from setting 'has_dealbreaker_gap' to True due to missing technical skills. You may ONLY use the dealbreaker flag if the candidate is missing a non-negotiable structural requirement (e.g., mandatory University Degree, legal License, Security Clearance, or severe deficit in total years of experience). Even if the candidate lacks every single required skill, 'has_dealbreaker_gap' MUST STILL BE FALSE.
             6. MULTI-JOB BATCHING: You will evaluate a list of jobs simultaneously against the single Candidate Profile. You MUST ensure that the output strictly maps back to the `job_id` provided for each job.
 
             OUTPUT CONSTRAINT:
@@ -423,7 +406,7 @@ class AIOrganiser:
 
                     logical_match_score = max(0, min(100, logical_match_score))
                     
-                    if result_dict.get('has_credential_disqualifier'):
+                    if result_dict.get('has_dealbreaker_gap'):
                         logical_match_score = 0
                         
                     updated_job_data['logical_match_score'] = logical_match_score
